@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% from "macros.html" import csrf_field, extlink %}
+{% block title %}ジョブ {{ job.id }} - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<p class="small"><a href="/jobs">← 進捗一覧</a></p>
+<h1>ジョブ <span class="mono">{{ job.id }}</span></h1>
+<div id="jobstatus" data-job="{{ job.id }}" data-active="{{ '1' if job.status in ('実行中', '停止要求') else '0' }}">
+<p>状態：<b class="state s-{{ job.status }}">{{ job.status }}</b>　進捗：<b>{{ job.done }} / {{ job.total }}</b>（完了 {{ job.counts.get('完了', 0) }}・失敗 {{ job.counts.get('失敗', 0) }}・停止 {{ job.counts.get('停止', 0) }}・待機 {{ job.counts.get('待機', 0) }}・実行中 {{ job.counts.get('実行中', 0) }}）</p>
+<progress max="{{ job.total or 1 }}" value="{{ job.done }}"></progress>
+<p class="small">{{ job.message or '' }}</p>
+</div>
+{% if job.kind == 'research' %}
+<p>
+{% if job.status == '実行中' %}<form method="post" action="/jobs/{{ job.id }}/stop" class="inline">{{ csrf_field(csrf) }}<button class="danger">停止</button></form>{% endif %}
+{% if job.status in ('停止', '中断') %}<form method="post" action="/jobs/{{ job.id }}/resume" class="inline">{{ csrf_field(csrf) }}<button>再開</button></form>{% endif %}
+{% if job.counts.get('失敗') or job.counts.get('停止') %}<form method="post" action="/jobs/{{ job.id }}/retry" class="inline">{{ csrf_field(csrf) }}<button class="secondary">失敗・停止分を再実行</button></form>{% endif %}
+</p>
+<table class="list small"><thead><tr><th>販売店</th><th>状態</th><th>失敗理由・補足</th><th>開始/終了(UTC)</th></tr></thead><tbody>
+{% for i in items %}<tr><td><a href="/dealers/{{ i.dealer_id }}">{{ i.name or i.website_url }}</a></td><td>{{ i.status }}</td><td class="warntext">{{ i.error or '' }}</td><td>{{ (i.started_at or '')[11:19] }} / {{ (i.finished_at or '')[11:19] }}</td></tr>{% endfor %}
+</tbody></table>
+{% endif %}
+{% endblock %}

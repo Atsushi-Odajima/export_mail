@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}ログイン - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<section class="card narrow">
+<h1>ログイン</h1>
+<form method="post" action="/login" class="stack">
+  <input type="hidden" name="next" value="{{ next }}">
+  <label>利用者名<input name="username" autocomplete="username" required></label>
+  <label>パスワード<input name="password" type="password" autocomplete="current-password" required></label>
+  <button>ログイン</button>
+</form>
+<p class="small muted">利用者はサーバーPCで <span class="mono">create-user</span> コマンドで作成します（README 参照）。</p>
+</section>
+{% endblock %}

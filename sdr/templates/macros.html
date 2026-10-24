@@ -1,0 +1,7 @@
+{% macro cats(list) -%}
+{% for c in list %}<span class="tag {{ 'warn' if c == '要確認' else '' }}">{{ c }}</span>{% endfor %}
+{%- endmacro %}
+{% macro csrf_field(csrf) -%}<input type="hidden" name="csrf_token" value="{{ csrf }}">{%- endmacro %}
+{% macro extlink(url, text=None) -%}
+{% if url|href != '#' %}<a href="{{ url|href }}" target="_blank" rel="noopener noreferrer nofollow" class="ext">{{ text or url }}</a>{% else %}{{ text or url or '' }}{% endif %}
+{%- endmacro %}

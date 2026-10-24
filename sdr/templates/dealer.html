@@ -1,0 +1,132 @@
+{% extends "base.html" %}{% from "macros.html" import cats, csrf_field, extlink %}
+{% block title %}{{ d.name or d.website_host }} - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<p class="small"><a href="/">← 一覧へ戻る</a></p>
+<h1>{{ d.name or d.website_host }}</h1>
+<p class="muted small">販売店ID <span class="mono">{{ d.id }}</span>（変更されません）／ データ区分：{{ d.data_origin }} ／ 登録 {{ d.created_at[:10] }}</p>
+
+{% if d.duplicate_status == '重複確認待ち' %}
+<div class="box warn">
+  <p><b>重複の可能性があります。</b>自動では統合していません。{% if dup %}比較先：<a href="/dealers/{{ dup.id }}">{{ dup.name }}</a>（{{ dup.website_host }}）{% endif %}</p>
+  <form method="post" action="/dealers/{{ d.id }}/duplicate" class="inline">{{ csrf_field(csrf) }}<input type="hidden" name="action" value="distinct"><button class="secondary">別の事業者として確定</button></form>
+  <form method="post" action="/dealers/{{ d.id }}/duplicate" class="inline">{{ csrf_field(csrf) }}<input type="hidden" name="action" value="branch"><button class="secondary">比較先の支店として関連付け</button></form>
+  <form method="post" action="/dealers/{{ d.id }}/duplicate" class="inline" data-confirm="この販売店を一覧から非表示にします（データは削除しません）">{{ csrf_field(csrf) }}<input type="hidden" name="action" value="archive"><button class="secondary">重複として非表示</button></form>
+</div>
+{% endif %}
+{% if parent %}<p class="box">この販売店は <a href="/dealers/{{ parent.id }}">{{ parent.name }}</a> の支店として関連付けています（件数には数えません）。
+  <form method="post" action="/dealers/{{ d.id }}/duplicate" class="inline">{{ csrf_field(csrf) }}<input type="hidden" name="action" value="unlink"><button class="link">関連付けを解除</button></form></p>{% endif %}
+{% if branches %}<p class="box">関連付けた支店：{% for b in branches %}<a href="/dealers/{{ b.id }}">{{ b.name or b.id }}</a>{% if not loop.last %}、{% endif %}{% endfor %}</p>{% endif %}
+{% if d.archived %}<p class="box warn">この販売店は非表示です。<form method="post" action="/dealers/{{ d.id }}/duplicate" class="inline">{{ csrf_field(csrf) }}<input type="hidden" name="action" value="unarchive"><button class="link">表示に戻す</button></form></p>{% endif %}
+
+<div class="grid2">
+<section class="card">
+  <h2>調査結果</h2>
+  <table class="kv">
+    <tr><th>公式サイト</th><td>{{ extlink(d.website_url) }}</td></tr>
+    <tr><th>地域</th><td>{{ d.region or '不明' }} {% if d.region_is_manual %}<span class="tag man">人が確定</span>{% endif %}</td></tr>
+    <tr><th>所在地</th><td>{{ d.address or '不明' }} {% if d.address_is_manual %}<span class="tag man">人が確定</span>{% endif %}</td></tr>
+    <tr><th>分類</th><td>{{ cats(d.categories) }} {% if d.categories_is_manual %}<span class="tag man">人が確定</span>{% endif %}</td></tr>
+    <tr><th>分類根拠</th><td>{{ d.category_basis or '—' }} {% if d.category_basis_is_manual %}<span class="tag man">人が確定</span>{% endif %}<br><span class="small muted">{{ d.category_scope_auto or '' }}</span></td></tr>
+    <tr><th>日本語概要</th><td>{{ d.summary or '未調査' }} {% if d.summary_is_manual %}<span class="tag man">人が確定</span>{% endif %}</td></tr>
+    <tr><th>中古車販売</th><td>{{ d.used_sales or '未調査' }}</td></tr>
+    <tr><th>英国内の確認</th><td>{{ d.uk_check_auto or '未調査' }}</td></tr>
+    <tr><th>対象かどうか</th><td>{{ d.eligibility }}</td></tr>
+    <tr><th>調査状態</th><td><span class="state s-{{ d.research_status }}">{{ d.research_status }}</span> {{ (d.last_researched_at or '')[:16]|replace('T', ' ') }}（UTC）{% if d.failure_reason %}<br><span class="warntext small">{{ d.failure_reason }}</span>{% endif %}</td></tr>
+    <tr><th>人の確認</th><td>{{ d.review_status }}{% if d.reviewed_at %}（{{ d.reviewed_at[:16]|replace('T',' ') }} UTC・{{ d.reviewed_by }}）{% endif %}</td></tr>
+    <tr><th>メモ</th><td class="pre">{{ d.notes or '' }}</td></tr>
+  </table>
+  <div class="actions">
+    <form method="post" action="/dealers/{{ d.id }}/research" class="inline">{{ csrf_field(csrf) }}<button>再調査</button></form>
+    <form method="post" action="/dealers/{{ d.id }}/review" class="inline">{{ csrf_field(csrf) }}<input type="hidden" name="status" value="確認済み"><button class="secondary">人が確認済みにする</button></form>
+    <form method="post" action="/dealers/{{ d.id }}/review" class="inline">{{ csrf_field(csrf) }}<input type="hidden" name="status" value="要確認"><button class="secondary">要確認にする</button></form>
+  </div>
+  <p class="small muted">再調査しても、人が確定した値（「人が確定」の印）と手動登録した連絡方法は上書きしません。</p>
+</section>
+
+<section class="card">
+  <h2>連絡方法</h2>
+  <p class="small muted">公開メールは「公式サイトで公開表示を確認した」ことだけを示します。到達可能性・営業送信の許可は確認していません。</p>
+  <table class="list small">
+    <thead><tr><th>種類</th><th>値</th><th>用途・状態</th><th>出典・観測</th><th>人の確定</th></tr></thead>
+    <tbody>
+    {% for c in d.contacts %}
+    <tr class="{{ '' if c.is_current else 'old' }}">
+      <td>{{ c.kind_label }}<br><span class="mono muted">{{ c.id }}</span></td>
+      <td class="mono">{% if c.kind in ('form', 'contact_page') %}{{ extlink(c.value) }}{% else %}{{ c.value }}{% endif %}
+        {% if c.person_name %}<br>担当：{{ c.person_name }} {{ c.person_role or '' }}{% endif %}</td>
+      <td>{{ c.purpose }}<br><b class="{{ 'ok' if c.status in ('公開メール確認済み','フォーム確認済み','公開番号確認済み') else 'warntext' }}">{{ c.status }}</b>
+        {% if c.status_is_manual %}<span class="tag man">人が確定</span>{% endif %}
+        {% if c.exclusion_reason %}<br><span class="muted">{{ c.exclusion_reason }}</span>{% endif %}
+        {% if not c.is_current %}<br><span class="muted">最新の調査では未検出（{{ (c.not_seen_since or '')[:10] }}）・履歴として保持</span>{% endif %}</td>
+      <td>{{ extlink(c.source_url, '出典を開く') }}<br><span class="muted">{{ c.origin }}／初回 {{ (c.first_observed_at or '')[:10] }}／最終 {{ (c.last_observed_at or '')[:10] }}</span>
+        {% if c.excerpt %}<details><summary>根拠の抜粋</summary><div class="quote">{{ c.excerpt }}</div></details>{% endif %}</td>
+      <td><form method="post" action="/contacts/{{ c.id }}/status">{{ csrf_field(csrf) }}
+        <select name="status"><option value="">（自動判定に従う）</option>{% for s in CONTACT_STATUSES %}<option {{ 'selected' if c.status_is_manual and c.status == s }}>{{ s }}</option>{% endfor %}</select>
+        <input name="note" placeholder="理由（任意）" size="10"><button class="small">保存</button></form>
+        {% if c.human_verified_at %}<span class="muted">{{ c.human_verified_at[:10] }} {{ c.human_verified_by }}</span>{% endif %}</td>
+    </tr>
+    {% else %}<tr><td colspan="5">連絡方法はまだありません。</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  <details class="addbox"><summary>連絡方法を手動で追加</summary>
+  <form method="post" action="/dealers/{{ d.id }}/contacts" class="stack">{{ csrf_field(csrf) }}
+    <label>種類<select name="kind"><option value="email">メール</option><option value="form">問い合わせフォーム（ページURL）</option><option value="contact_page">問い合わせページ（フォーム未確認）</option><option value="phone">電話</option></select></label>
+    <label>値（メール・URL・電話番号）<input name="value" required></label>
+    <label>確認したページのURL<input name="source_url" placeholder="https://..."></label>
+    <label>担当者名（公開され確認できた場合のみ）<input name="person_name"></label>
+    <label>役職<input name="person_role"></label>
+    <label>根拠・メモ<input name="note"></label>
+    <button>追加</button>
+  </form></details>
+</section>
+</div>
+
+<section class="card">
+  <h2>手動編集</h2>
+  <p class="small muted">入力した項目は「人の確定値」として保存され、表示は自動取得値より優先されます。空欄にして保存すると確定値を解除し、自動取得値の表示に戻ります。</p>
+  <form method="post" action="/dealers/{{ d.id }}/edit" class="stack two">{{ csrf_field(csrf) }}
+    <label>店名（自動：{{ d.name_auto or '—' }}）<input name="name" value="{{ d.name_manual or '' }}"></label>
+    <label>地域（自動：{{ d.region_auto or '—' }}）<input name="region" value="{{ d.region_manual or '' }}"></label>
+    <label>所在地（自動：{{ d.address_auto or '—' }}）<input name="address" value="{{ d.address_manual or '' }}"></label>
+    <label>公式サイトURL（変更しても販売店IDは変わりません）<input name="website_url" value="{{ d.website_url }}"></label>
+    <fieldset><legend>分類（自動：{{ d.categories_auto_list|join('・') or '—' }}）</legend>
+      {% for c in CATEGORIES %}<label class="check"><input type="checkbox" name="categories" value="{{ c }}" {{ 'checked' if d.categories_manual_list and c in d.categories_manual_list }}>{{ c }}</label>{% endfor %}
+    </fieldset>
+    <label>分類根拠（自動：{{ d.category_basis_auto or '—' }}）<select name="category_basis"><option value="">（自動に従う）</option>{% for b in BASES %}<option {{ 'selected' if d.category_basis_manual == b }}>{{ b }}</option>{% endfor %}</select></label>
+    <label class="wide">日本語概要（自動：{{ d.summary_auto or '—' }}）<textarea name="summary" rows="3">{{ d.summary_manual or '' }}</textarea></label>
+    <label>対象かどうか（人の判断）<select name="eligibility_manual"><option value="">（自動判定に従う）</option>{% for v in ['対象', '対象外', '要確認'] %}<option {{ 'selected' if d.eligibility_manual == v }}>{{ v }}</option>{% endfor %}</select></label>
+    <label class="wide">メモ<textarea name="notes" rows="3">{{ d.notes or '' }}</textarea></label>
+    <button>保存</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>調査根拠（最新の調査{% if ev_latest and ev_latest[0].observed_at %}：{{ ev_latest[0].observed_at[:16]|replace('T',' ') }} UTC{% endif %}）</h2>
+  <p class="small muted">外部ページの文章はそのまま文字として表示しています（リンクやスクリプトとしては扱いません）。</p>
+  <table class="list small">
+    <thead><tr><th>項目</th><th>根拠の抜粋</th><th>出典</th><th>観測日時(UTC)</th></tr></thead>
+    <tbody>{% for e in ev_latest %}
+      <tr><td>{{ e.topic }}{% if e.contact_value %}<br><span class="mono muted">{{ e.contact_value }}</span>{% endif %}</td><td class="quote">{{ e.excerpt or '' }}</td><td>{{ extlink(e.source_url, '出典を開く') }}</td><td>{{ e.observed_at[:16]|replace('T',' ') }} {{ '（手動）' if e.origin == '手動' }}</td></tr>
+    {% else %}<tr><td colspan="4">根拠はまだありません。</td></tr>{% endfor %}</tbody>
+  </table>
+  {% if ev_older %}<details><summary>過去の調査の根拠（{{ ev_older|length }} 件）</summary>
+  <table class="list small"><tbody>{% for e in ev_older %}<tr><td>{{ e.topic }}</td><td class="quote">{{ e.excerpt or '' }}</td><td>{{ extlink(e.source_url, '出典') }}</td><td>{{ e.observed_at[:16]|replace('T',' ') }}</td></tr>{% endfor %}</tbody></table></details>{% endif %}
+</section>
+
+<section class="card">
+  <h2>取得したページ</h2>
+  {% for r in runs[:3] %}
+  <details {{ 'open' if loop.first }}><summary>{{ r.started_at[:16]|replace('T',' ') }} UTC ／ {{ r.status }} ／ {{ r.pages_ok }}/{{ r.pages_attempted }} ページ</summary>
+  <table class="list small"><tbody>{% for p in r.pages %}<tr><td>{{ p.role }}</td><td>{{ extlink(p.url) }}</td><td>{{ p.status }}</td><td class="warntext">{{ p.error }}</td></tr>{% endfor %}</tbody></table>
+  </details>
+  {% else %}<p>まだ調査していません。</p>{% endfor %}
+</section>
+
+<section class="card">
+  <h2>変更履歴</h2>
+  <details><summary>{{ history|length }} 件</summary>
+  <table class="list small"><thead><tr><th>日時(UTC)</th><th>対象</th><th>項目</th><th>変更前</th><th>変更後</th><th>経路</th></tr></thead>
+  <tbody>{% for h in history %}<tr><td>{{ h.changed_at[:16]|replace('T',' ') }}</td><td class="mono">{{ h.entity_id }}</td><td>{{ h.field }}</td><td class="quote">{{ (h.old_value or '')[:200] }}</td><td class="quote">{{ (h.new_value or '')[:200] }}</td><td>{{ h.origin }} {{ h.changed_by or '' }}</td></tr>{% endfor %}</tbody></table>
+  </details>
+</section>
+{% endblock %}

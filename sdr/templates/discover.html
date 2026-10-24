@@ -1,0 +1,51 @@
+{% extends "base.html" %}{% from "macros.html" import csrf_field, extlink %}
+{% block title %}候補発見 - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>候補発見</h1>
+<p>ここでは「調査する候補のURL」を集めます。候補は<a href="/candidates">候補一覧</a>で確認してから販売店として登録・調査します（候補の発見と公式サイトの調査は別の処理です）。</p>
+<form method="get" action="/discover" class="filters">
+  <label>地域<select name="region">{% for r in regions %}<option {{ 'selected' if r == region }}>{{ r }}</option>{% endfor %}</select></label>
+  <label>分野<select name="category">{% for c in categories %}<option {{ 'selected' if c == category }}>{{ c }}</option>{% endfor %}</select></label>
+  <button class="secondary">条件を反映</button>
+</form>
+
+<div class="grid2">
+<section class="card">
+  <h2>自動検索 <span class="tag">アプリが取得</span></h2>
+  <h3>A. OpenStreetMap（無料・APIキー不要）</h3>
+  <p class="small">OpenStreetMap に「自動車販売店（shop=car）」として登録され、ウェブサイトが記載されている店を選んだ地域から集めます。OSMには分野の情報がほぼないため、分野は調査後に判定します。新車ディーラーも含まれるため、調査で中古車販売を確認します。データ © OpenStreetMap contributors（ODbL）。</p>
+  <form method="post" action="/discover/run" class="stack">{{ csrf_field(csrf) }}
+    <input type="hidden" name="provider" value="osm"><input type="hidden" name="region" value="{{ region or regions[0] }}"><input type="hidden" name="category" value="{{ category }}">
+    <label>最大件数（取得上限）<input type="number" name="limit" value="20" min="1" max="50"></label>
+    <p class="small">実行前の上限：1回の問い合わせ（Overpass API）・最大50件。地域：{{ region or regions[0] }}</p>
+    <button>OpenStreetMap から候補を集める</button>
+  </form>
+  <h3>B. Firecrawl 検索（APIキーが必要・無料枠あり）</h3>
+  {% if has_key %}
+  <p class="small">今月の使用量：{{ used|round(1) }} / 上限 {{ settings.firecrawl_monthly_credit_cap }} クレジット（設定で変更）。検索は10件あたり2クレジット。上限に達すると実行しません。有料プランへは自動で切り替えません。</p>
+  <form method="post" action="/discover/run" class="stack">{{ csrf_field(csrf) }}
+    <input type="hidden" name="provider" value="firecrawl"><input type="hidden" name="region" value="{{ region or regions[0] }}"><input type="hidden" name="category" value="{{ category }}">
+    <label>最大件数（1回の上限 {{ settings.firecrawl_max_results_per_run }} 件）<input type="number" name="limit" value="10" min="1" max="{{ settings.firecrawl_max_results_per_run }}"></label>
+    <button>Firecrawl で検索する（分野：{{ category }}）</button>
+  </form>
+  {% else %}
+  <p class="small muted">APIキーが未設定です。使う場合は<a href="/settings">設定</a>で入力してください（任意。なくても他の方法で調査できます）。</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>手動補助 <span class="tag warn">ブラウザーで開くだけ</span></h2>
+  <p class="small">下のリンクは検索語を入れた検索ページを新しいタブで開くだけです。<b>アプリは検索結果を取得しません。</b>見つけた販売店の公式サイトURLを<a href="/add">URL追加</a>に貼り付けてください。</p>
+  <ul>{% for label, url in links %}<li>{{ extlink(url, label + '：' + category + '（' + (region or 'London') + '）') }}</li>{% endfor %}</ul>
+  <p class="small">掲載サイト（AutoTrader など）で見つけた場合も、登録するのは販売店自身の公式サイトにしてください。</p>
+</section>
+</div>
+
+<section class="card">
+  <h2>最近の候補発見</h2>
+  <table class="list small"><thead><tr><th>開始</th><th>方法</th><th>条件</th><th>状態</th><th>結果</th></tr></thead><tbody>
+  {% for j in recent %}<tr><td>{{ j.created_at[:16]|replace('T',' ') }}</td><td>{{ j.params.provider }}</td><td>{{ j.params.region }}／{{ j.params.category }}／{{ j.params.limit }}件</td><td>{{ j.status }}</td><td>{{ j.message or '' }}</td></tr>
+  {% else %}<tr><td colspan="5">まだありません。</td></tr>{% endfor %}</tbody></table>
+  <p class="small"><a href="/discover?region={{ region }}&category={{ category }}">表示を更新</a></p>
+</section>
+{% endblock %}

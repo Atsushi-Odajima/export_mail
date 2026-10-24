@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ APP_NAME }}{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><a href="/">{{ APP_NAME }}</a><span class="sub">英国中古車販売店の調査</span></div>
+  {% if user %}
+  <nav>
+    <a href="/">販売店一覧</a>
+    <a href="/discover">候補発見</a>
+    <a href="/candidates">候補一覧</a>
+    <a href="/add">URL追加・CSV取込</a>
+    <a href="/jobs">調査の進捗</a>
+    <a href="/settings">設定・バックアップ</a>
+    <a href="/about">説明</a>
+  </nav>
+  <div class="who">
+    {% if MODE == 'shared' %}
+      <span>{{ user.username }} でログイン中</span>
+      <form method="post" action="/logout" class="inline"><input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="link">ログアウト</button></form>
+    {% else %}
+      <form method="post" action="/shutdown" class="inline" data-confirm="アプリを終了します。実行中の調査は中断され、次回「再開」できます。よろしいですか？">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}"><button class="danger small">アプリを終了</button></form>
+    {% endif %}
+  </div>
+  {% endif %}
+</header>
+<main>
+{% if msg %}<p class="flash ok">{{ msg }}</p>{% endif %}
+{% if err %}<p class="flash err">{{ err }}</p>{% endif %}
+{% block content %}{% endblock %}
+</main>
+<footer class="foot">{{ APP_NAME }} {{ VERSION }} ／ 表示している公開メールは「公式サイトで公開表示を確認した」ことだけを示し、到達可能性や営業送信の許可を確認したものではありません。</footer>
+</body>
+</html>

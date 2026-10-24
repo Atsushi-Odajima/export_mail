@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}調査の進捗 - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>調査の進捗</h1>
+<p class="small">調査はバックグラウンドで進みます。画面は自由に操作できます。アプリを閉じても完了済みの結果は保存され、未完了分は次回「再開」できます。</p>
+<table class="list"><thead><tr><th>ジョブ</th><th>種類</th><th>状態</th><th>進捗</th><th>内容</th><th>開始(UTC)</th></tr></thead><tbody>
+{% for j in jobs %}<tr><td><a href="/jobs/{{ j.id }}" class="mono">{{ j.id }}</a></td><td>{{ '調査' if j.kind == 'research' else '候補発見' }}</td>
+<td><span class="state s-{{ j.status }}">{{ j.status }}</span></td>
+<td>{% if j.kind == 'research' %}{{ j.done }} / {{ j.total }}（失敗 {{ j.counts.get('失敗', 0) }}・停止 {{ j.counts.get('停止', 0) }}）{% endif %}</td>
+<td class="small">{{ j.params.label or j.params.provider or '' }} {{ j.message or '' }}</td><td class="small">{{ j.created_at[:16]|replace('T',' ') }}</td></tr>
+{% else %}<tr><td colspan="6">まだありません。</td></tr>{% endfor %}</tbody></table>
+{% endblock %}

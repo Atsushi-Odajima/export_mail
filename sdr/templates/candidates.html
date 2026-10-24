@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% from "macros.html" import csrf_field, extlink %}
+{% block title %}候補一覧 - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>候補一覧</h1>
+<p class="small">候補は発見しただけの状態です。販売店として登録すると公式サイトの調査ができます。URLは推測で作らず、取得元に記載されたものだけを表示しています。</p>
+<p>{% for s in ['未処理', '登録済み', '重複', '除外', ''] %}<a href="/candidates?status={{ s }}" class="{{ 'current' if s == status }}">{{ s or 'すべて' }}</a>{% if not loop.last %} ｜ {% endif %}{% endfor %}</p>
+<form method="post" action="/candidates/action">{{ csrf_field(csrf) }}
+<div class="tablewrap"><table class="list small">
+<thead><tr><th><input type="checkbox" data-toggle-all="ids" aria-label="すべて選択"></th><th>名称（取得元の表記）</th><th>URL</th><th>地域</th><th>参考情報</th><th>取得元</th><th>状態</th></tr></thead>
+<tbody>{% for c in cands %}
+<tr><td>{% if c.status == '未処理' %}<input type="checkbox" name="ids" value="{{ c.id }}" aria-label="選択">{% endif %}</td>
+<td>{{ c.name or '（名称なし）' }}</td><td>{{ extlink(c.url) }}</td><td>{{ c.region or '' }}</td><td>{{ c.hint or '' }}</td>
+<td>{{ c.source }}<br><span class="muted">{{ c.source_detail or '' }}</span></td>
+<td>{{ c.status }}{% if c.dealer_id %}<br><a href="/dealers/{{ c.dealer_id }}" class="mono">{{ c.dealer_id }}</a>{% endif %}{% if c.note %}<br><span class="muted">{{ c.note }}</span>{% endif %}</td></tr>
+{% else %}<tr><td colspan="7">候補はありません。<a href="/discover">候補発見</a>から集めてください。</td></tr>{% endfor %}</tbody></table></div>
+<p><button name="action" value="register_research">選択を登録して調査開始</button>
+<button name="action" value="register" class="secondary">登録のみ</button>
+<button name="action" value="exclude" class="secondary">除外</button></p>
+</form>
+{% endblock %}

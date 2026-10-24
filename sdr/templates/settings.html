@@ -1,0 +1,44 @@
+{% extends "base.html" %}{% from "macros.html" import csrf_field %}
+{% block title %}設定・バックアップ - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>設定・バックアップ</h1>
+<div class="grid2">
+<section class="card">
+  <h2>取得の設定</h2>
+  <p class="small">サイトに負荷をかけないよう、範囲外の値は自動で上限・下限に合わせます（取得間隔は2秒未満にできません）。</p>
+  <form method="post" action="/settings" class="stack">{{ csrf_field(csrf) }}
+    {% for key, label in labels.items() %}<label>{{ label }}（既定 {{ defaults[key] }}）<input name="{{ key }}" value="{{ settings[key] }}"></label>{% endfor %}
+    <button>保存</button>
+  </form>
+</section>
+<section class="card">
+  <h2>Firecrawl APIキー（任意）</h2>
+  <p class="small">状態：{{ '設定済み' if has_key else '未設定' }}。キーはデータフォルダーの secrets.json にだけ保存し、データベース・バックアップ・CSV・ログには含めません。今月の使用量 {{ used|round(1) }} クレジット。</p>
+  <form method="post" action="/settings/firecrawl-key" class="stack">{{ csrf_field(csrf) }}
+    <input name="api_key" type="password" autocomplete="off" placeholder="fc-...">
+    <button>保存</button> <button name="clear" value="1" class="secondary">キーを削除</button>
+  </form>
+
+  <h2>バックアップ</h2>
+  <p class="small">ID・人の確定値・根拠・履歴・候補を含むデータベース全体を ZIP にします（取得キャッシュ・ログイン情報・APIキーは含めません）。保存先：<span class="mono">{{ data_dir }}/backups</span></p>
+  <form method="post" action="/backup/create" class="inline">{{ csrf_field(csrf) }}<button>今すぐバックアップ</button></form>
+  <ul class="small">{% for b in backups %}<li><a href="/backup/download/{{ b.name }}">{{ b.name }}</a></li>{% else %}<li>まだありません</li>{% endfor %}</ul>
+
+  <h2>復元</h2>
+  <p class="small">復元すると現在のデータはバックアップの内容に置き換わります。直前に現在のデータを自動でバックアップします。</p>
+  <form method="post" action="/backup/restore" enctype="multipart/form-data" class="stack" data-confirm="現在のデータをバックアップの内容に置き換えます。よろしいですか？">{{ csrf_field(csrf) }}
+    <input type="file" name="file" accept=".zip" required>
+    <label class="check"><input type="checkbox" name="confirm" value="1">現在のデータが置き換わることを理解しました</label>
+    <button class="danger">復元する</button>
+  </form>
+
+  <h2>初期データ</h2>
+  <p class="small">同梱の確認済み初期データ（英国の販売店）のうち、まだ無いものだけを追加します。既存の販売店は変更しません。最終読込：{{ seeded or '未読込' }}</p>
+  <form method="post" action="/seed/import" class="inline">{{ csrf_field(csrf) }}<button class="secondary">初期データの不足分を読み込む</button></form>
+
+  <h2>データの保存場所</h2>
+  <p class="small mono">{{ data_dir }}</p>
+  <p class="small">データベースの版：{{ schema }}／アプリ {{ VERSION }}</p>
+</section>
+</div>
+{% endblock %}
