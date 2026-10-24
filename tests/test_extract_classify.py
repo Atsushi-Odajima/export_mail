@@ -144,3 +144,11 @@ def test_outward_postcode_and_times_sign():
     assert _foreign_jsonld_address([{"address": {"postalCode": "CM9", "addressCountry": "GB"}}]) is None
     cls = C.classify_dealer([page("about", "Family run, independent, new and used 4×4 vehicle specialists in Norfolk.")])
     assert C.CAT_SUV in cls.categories
+
+
+def test_address_cleanup():
+    from sdr.research import address_from_context
+    ctx = "mail.com Contact us on: 07933 447710 Find us at: Woodhall Cars Calverley Site, A6120 Ring Rd, Calverley, Leeds, LS13 1LY"
+    assert address_from_context(ctx) == "Woodhall Cars Calverley Site, A6120 Ring Rd, Calverley, Leeds, LS13 1LY"
+    ctx2 = "Contact 01274 738500 WhatsApp Hillam Road Off Canal Road Bradford West Yorkshire BD2 1QN"
+    assert address_from_context(ctx2) == "Hillam Road Off Canal Road Bradford West Yorkshire BD2 1QN"

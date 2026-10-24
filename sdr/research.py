@@ -174,6 +174,23 @@ def _foreign_jsonld_address(jsonld: list[dict]) -> str | None:
     return None
 
 
+ADDRESS_MARKERS = re.compile(r"(?:address|find us at|located at|visit us at|where to find us|our location|showroom)\s*:?\s*", re.I)
+
+
+def address_from_context(ctx: str) -> str:
+    """郵便番号の直前の文字列から住所部分だけを取り出す（電話・メール・見出しを除く）。"""
+    text = clean(ctx)
+    marks = list(ADDRESS_MARKERS.finditer(text))
+    if marks:
+        text = text[marks[-1].end():]
+    else:
+        text = re.split(r"[.!?:|]\s", text)[-1]
+    text = re.sub(r"\S+@\S+", " ", text)
+    text = re.sub(r"(?:\+44\s?\(?0?\)?\s?|\b0)(?:\d[\s-]?){9,10}\b", " ", text)
+    text = re.sub(r"\b(?:WhatsApp|Tel|Phone|Call us|Contact us|Contact|Email|E-mail|Mobile)\b:?", " ", text, flags=re.I)
+    return clean(text)[-160:].strip(" ,-")
+
+
 def analyse(result: ResearchResult, infos: list[tuple[PageInfo, str]], site_url: str) -> None:
     site_host = host_key(site_url)
     home = infos[0][0]
@@ -209,8 +226,7 @@ def analyse(result: ResearchResult, infos: list[tuple[PageInfo, str]], site_url:
         all_codes.sort(key=lambda c: {"contact": 0, "about": 1, "home": 2}.get(c[3], 3))
         pc, ctx, url, _ = all_codes[0]
         postcode = pc
-        tail = ctx.split(". ")[-1]
-        address = clean(tail)[-160:]
+        address = address_from_context(ctx)
         addr_src = (url, ctx[-240:])
     if postcode:
         pr = postcode_region(postcode)

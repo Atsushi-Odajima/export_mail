@@ -43,7 +43,7 @@ jobs:
           $page = Invoke-WebRequest http://127.0.0.1:8799/ -SessionVariable s
           if ($page.Content -notmatch "販売店一覧") { throw "一覧画面が表示されません" }
           $csv = Invoke-WebRequest http://127.0.0.1:8799/export/dealers.csv -WebSession $s
-          $rows = ([System.Text.Encoding]::UTF8.GetString($csv.Content) -split "`r`n" | Where-Object { $_ -ne "" }).Count - 1
+          $rows = ([System.Text.Encoding]::UTF8.GetString($csv.RawContentStream.ToArray()) -split "`r`n" | Where-Object { $_ -ne "" }).Count - 1
           Write-Host "初期データ件数: $rows"
           if ($rows -lt 20) { throw "初期データが読み込まれていません" }
           if (-not (Test-Path (Join-Path $data "dealers.sqlite3"))) { throw "データフォルダーに保存されていません" }
@@ -56,7 +56,7 @@ jobs:
           $p2 = Start-Process -FilePath $exe -ArgumentList "--data-dir", $data, "local", "--no-browser", "--port", "8799" -PassThru
           for ($i = 0; $i -lt 60; $i++) { Start-Sleep -Seconds 1; try { Invoke-RestMethod http://127.0.0.1:8799/healthz | Out-Null; break } catch {} }
           $csv2 = Invoke-WebRequest http://127.0.0.1:8799/export/dealers.csv
-          $rows2 = ([System.Text.Encoding]::UTF8.GetString($csv2.Content) -split "`r`n" | Where-Object { $_ -ne "" }).Count - 1
+          $rows2 = ([System.Text.Encoding]::UTF8.GetString($csv2.RawContentStream.ToArray()) -split "`r`n" | Where-Object { $_ -ne "" }).Count - 1
           if ($rows2 -ne $rows) { throw "再起動後に件数が変わりました" }
           Stop-Process -Id $p2.Id
           Write-Host "Windows 起動確認 OK"
