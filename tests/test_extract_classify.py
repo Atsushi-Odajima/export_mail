@@ -101,8 +101,8 @@ def test_unknown_stays_review():
 
 def test_summary_only_states_found_facts():
     cls = C.Classification([C.CAT_GENERAL], C.BASIS_TREND, "在庫ページ 1 件", [])
-    s = C.build_summary("ヨークシャー", "Leeds", "中古車販売を確認", cls, ["下取り（Part Exchange）", "1998年創業の記載"])
-    assert s.startswith("ヨークシャー（Leeds周辺）の中古車販売店です。")
+    s = C.build_summary("ヨークシャー", "LS1 4AP", "中古車販売を確認", cls, ["下取り（Part Exchange）", "1998年創業の記載"])
+    assert s.startswith("ヨークシャー（郵便番号 LS1 4AP）の中古車販売店です。")
     assert "全在庫は未確認" in s
     assert s.count("。") <= 3
 
@@ -112,3 +112,35 @@ def test_ireland_not_treated_as_uk():
     assert "英国外" in st
     st, _ = C.detect_uk([("BT1 1AA", "", "")], [], "Belfast, Northern Ireland", "ni-cars.example")
     assert st == "英国内の住所を確認"
+
+
+def test_marque_specialist_is_sports_official():
+    cls = C.classify_dealer([page("home", "Passion for Perfection. Independent Low Mileage Porsche Specialists. Cars for sale.")])
+    assert cls.categories == [C.CAT_SPORTS] and cls.basis == C.BASIS_OFFICIAL
+
+
+def test_car_and_van_dealer_is_not_van_specialist():
+    cls = C.classify_dealer([page("home", "Used cars for sale in Edinburgh",
+                                  "Used cars and vans Edinburgh, Used car and van Dealer in Midlothian")])
+    assert C.CAT_OTHER not in cls.categories and cls.categories == [C.CAT_GENERAL]
+
+
+def test_match_does_not_cross_sentences():
+    text = ("We are experts in the storage and transport of classic cars, motorcycles and modern high performance machines. "
+            "People At The Hub Sales team")
+    cls = C.classify_dealer([page("about", text)])
+    assert C.CAT_SPORTS not in cls.categories
+
+
+def test_foreign_structured_address_flagged():
+    from sdr.research import _foreign_jsonld_address
+    assert _foreign_jsonld_address([{"@type": "AutoDealer", "address": {"postalCode": "151-0063", "addressLocality": "Tokyo"}}])
+    assert _foreign_jsonld_address([{"address": {"postalCode": "LS1 4AP", "addressCountry": "GB"}}]) is None
+    assert _foreign_jsonld_address([{"address": {"postalCode": "D02 X285", "addressCountry": "IE"}}])
+
+
+def test_outward_postcode_and_times_sign():
+    from sdr.research import _foreign_jsonld_address
+    assert _foreign_jsonld_address([{"address": {"postalCode": "CM9", "addressCountry": "GB"}}]) is None
+    cls = C.classify_dealer([page("about", "Family run, independent, new and used 4×4 vehicle specialists in Norfolk.")])
+    assert C.CAT_SUV in cls.categories

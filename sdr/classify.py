@@ -27,23 +27,31 @@ BASES = [BASIS_OFFICIAL, BASIS_TREND, BASIS_MANUAL]
 
 _SPEC = r"(?:specialist|specialists|specialising|specializing|specialise|specialize|dealer|dealers|dealership|sales|centre|center|supermarket|for sale)"
 
+_GAP = r"[^.|!?]{0,40}?"  # 同じ文の中だけで対応させる
+SPORTS_MARQUES = r"(?:porsche|ferrari|lamborghini|mclaren|lotus|aston martin|tvr|caterham|maserati|morgan|noble|ariel)"
+
 SPECIALIST_PATTERNS: dict[str, list[re.Pattern]] = {
     CAT_CLASSIC: [
-        re.compile(r"\b(?:classic|vintage|historic|heritage)(?: (?:and|&) (?:classic|vintage|sports|prestige|historic|modern classic))?(?: sports)? (?:car|cars|vehicle|vehicles|motor car|motor cars|motors)\b.{0,40}?\b" + _SPEC + r"\b", re.I),
+        re.compile(r"\b(?:classic|vintage|historic|heritage)(?: (?:and|&) (?:classic|vintage|sports|prestige|historic|modern classic))?(?: sports)? (?:car|cars|vehicle|vehicles|motor car|motor cars|motors)\b" + _GAP + r"\b" + _SPEC + r"\b", re.I),
         re.compile(r"\b(?:specialist|specialists|dealers?|specialising|specializing)\b (?:in|of) (?:the )?(?:sale of )?(?:classic|vintage|historic)\b", re.I),
         re.compile(r"\bclassic (?:car|cars) (?:dealer|dealers|dealership|specialists?)\b", re.I),
     ],
     CAT_SPORTS: [
-        re.compile(r"\b(?:sports|performance|supercar|supercars|sportscar|sportscars|high[- ]performance)(?: (?:and|&) (?:prestige|performance|sports|supercar|classic))?(?: car| cars| vehicles)?\b.{0,30}?\b(?:specialist|specialists|dealer|dealers|dealership|sales)\b", re.I),
+        re.compile(r"\b(?:sports|performance|high[- ]performance|sportscar|sportscars)(?: (?:and|&) (?:prestige|performance|sports|classic))? (?:car|cars|vehicles)\b" + _GAP + r"\b(?:specialist|specialists|dealer|dealers|dealership|sales)\b", re.I),
+        re.compile(r"\bsupercars? (?:specialist|specialists|dealer|dealers|dealership|sales)\b", re.I),
         re.compile(r"\b(?:specialist|specialists|dealers?|specialising|specializing)\b (?:in|of) (?:the )?(?:sale of )?(?:prestige (?:and|&) )?(?:sports|performance|supercars?)\b", re.I),
+        # スポーツカーのメーカー専門（例：Independent Porsche Specialists）
+        re.compile(r"\b" + SPORTS_MARQUES + r"(?: (?:and|&) [a-z-]+)? (?:specialist|specialists|dealer|dealers)\b", re.I),
+        re.compile(r"\b(?:specialist|specialists|specialising|specializing|specialise|specialize)\b (?:in|on) (?:the )?(?:sale of )?(?:used |pre-owned |the )?" + SPORTS_MARQUES + r"\b", re.I),
     ],
     CAT_SUV: [
-        re.compile(r"\b(?:4x4|4 x 4|4x4s|suv|suvs|mpv|mpvs|people carriers?|7[- ]seaters?|seven[- ]seaters?|land rover|range rover)\b.{0,30}?\b(?:specialist|specialists|dealer|dealers|dealership|sales|centre|center)\b", re.I),
-        re.compile(r"\b(?:specialist|specialists|specialising|specializing)\b (?:in|of) (?:the )?(?:sale of )?(?:4x4s?|suvs?|mpvs?|people carriers|land rovers?|range rovers?)\b", re.I),
+        re.compile(r"\b(?:4[x×]4|4 x 4|4[x×]4s|suv|suvs|mpv|mpvs|people carriers?|7[- ]seaters?|seven[- ]seaters?|land rover|range rover)\b" + _GAP + r"\b(?:specialist|specialists|dealer|dealers|dealership|centre|center)\b", re.I),
+        re.compile(r"\b(?:specialist|specialists|specialising|specializing)\b (?:in|of) (?:the )?(?:sale of )?(?:4[x×]4s?|suvs?|mpvs?|people carriers|land rovers?|range rovers?)\b", re.I),
     ],
     CAT_OTHER: [
-        re.compile(r"\b(?:wheelchair accessible vehicles?|wavs?|motorhomes?|campervans?|camper vans?|commercial vehicles?|vans)\b.{0,30}?\b(?:specialist|specialists|dealer|dealers|sales|centre)\b", re.I),
-        re.compile(r"\b(?:japanese|jdm) (?:car |vehicle )?imports?\b.{0,30}?\b(?:specialist|specialists|dealer|dealers|sales)\b", re.I),
+        re.compile(r"\b(?:wheelchair accessible vehicles?|wavs?|motorhomes?|campervans?|camper vans?|commercial vehicles?)\b" + _GAP + r"\b(?:specialist|specialists|dealer|dealers|sales|centre)\b", re.I),
+        re.compile(r"\bvan (?:specialist|specialists|centre|center)\b", re.I),
+        re.compile(r"\b(?:japanese|jdm) (?:car |vehicle )?imports?\b" + _GAP + r"\b(?:specialist|specialists|dealer|dealers|sales)\b", re.I),
         re.compile(r"\b(?:specialist|specialists)\b (?:in|of) (?:japanese|jdm) imports?\b", re.I),
     ],
 }
@@ -350,11 +358,11 @@ def detect_features(pages: list[PageText]) -> list[tuple[str, str, str]]:
 # ---------------------------------------------------------------------------
 # 日本語概要（1〜3文。確認できた事実だけで組み立てる）
 # ---------------------------------------------------------------------------
-def build_summary(region: str | None, town: str | None, used_sales: str, cls: Classification,
+def build_summary(region: str | None, postcode: str | None, used_sales: str, cls: Classification,
                   features: list[str]) -> str:
     sentences = []
     if region:
-        place = f"{region}（{town}周辺）" if town else region
+        place = f"{region}（郵便番号 {postcode}）" if postcode else region
         if used_sales == "中古車販売を確認":
             sentences.append(f"{place}の中古車販売店です。")
         else:

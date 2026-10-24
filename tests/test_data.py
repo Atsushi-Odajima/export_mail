@@ -257,16 +257,17 @@ def test_job_runs_stops_and_resumes(paths, conn):
     repo.set_setting(conn, "min_interval_sec", "2")
     jm.start()  # 起動時の中断復旧はジョブ作成より前（アプリ起動時と同じ順序）
     jid = repo.create_job(conn, "research", ids)
-    jm.stop(jid)  # 実行前に停止 → 残りは「停止」で保持
-    assert repo.job_view(conn, jid)["status"] == "停止"
-    assert repo.job_view(conn, jid)["counts"].get("停止") == 4
+    jm.stop(jid)  # 実行中の1件があれば「停止要求」→ページ取得の合間で止まり「停止」になる
+    assert _wait(lambda: repo.job_view(conn, jid)["status"] == "停止", 30)
+    counts = repo.job_view(conn, jid)["counts"]
+    assert counts.get("停止", 0) >= 3 and counts.get("停止", 0) + counts.get("完了", 0) == 4
     jm.resume(jid)
     try:
         assert _wait(lambda: repo.job_view(conn, jid)["status"] == "完了", 60)
     finally:
         jm.shutdown()
     job = repo.job_view(conn, jid)
-    assert job["counts"].get("完了") == 4
+    assert job["counts"] == {"完了": 4}
     assert all(repo.get_dealer(conn, d)["research_status"] == "完了" for d in ids)
 
 

@@ -148,6 +148,32 @@ def research_site(site_url: str, fetcher: Fetcher, max_pages: int = 10,
     return result
 
 
+UK_COUNTRY = {"gb", "uk", "united kingdom", "great britain", "england", "scotland", "wales", "northern ireland"}
+
+
+def _foreign_jsonld_address(jsonld: list[dict]) -> str | None:
+    """構造化データに英国外の住所（国名・郵便番号の形式）があれば、その住所を返す。"""
+    from .extract import UK_POSTCODE_RE
+    for obj in jsonld:
+        addr = obj.get("address")
+        if isinstance(addr, list):
+            addr = addr[0] if addr else None
+        if not isinstance(addr, dict):
+            continue
+        country = addr.get("addressCountry")
+        if isinstance(country, dict):
+            country = country.get("name") or country.get("@id")
+        country = clean(str(country or "")).lower()
+        pc = clean(str(addr.get("postalCode") or "")).upper()
+        text = clean(", ".join(str(addr.get(k)) for k in ("streetAddress", "addressLocality", "postalCode", "addressCountry") if addr.get(k)))
+        if country and country not in UK_COUNTRY:
+            return text
+        uk_like = UK_POSTCODE_RE.fullmatch(pc) or re.fullmatch(r"[A-Z]{1,2}\d[A-Z\d]?", pc)  # 前半だけの表記も英国形式
+        if pc and not uk_like:
+            return text
+    return None
+
+
 def analyse(result: ResearchResult, infos: list[tuple[PageInfo, str]], site_url: str) -> None:
     site_host = host_key(site_url)
     home = infos[0][0]
@@ -190,7 +216,7 @@ def analyse(result: ResearchResult, infos: list[tuple[PageInfo, str]], site_url:
         pr = postcode_region(postcode)
         if pr:
             area, town, region = pr
-            result.region = f"{region}・{town}（{area}）"
+            result.region = f"{region}・{town}エリア（郵便番号 {area}）"
         result.postcode = postcode
         result.address = address
         if addr_src:
@@ -201,6 +227,11 @@ def analyse(result: ResearchResult, infos: list[tuple[PageInfo, str]], site_url:
     codes_for_uk = [(pc, "", url) for pc, _, url, _ in all_codes] or ([(postcode, "", "")] if postcode else [])
     all_text = " ".join(i.text[:50000] for i, _ in infos)
     result.uk_check, uk_note = C.detect_uk(codes_for_uk, phones_all, all_text, site_host)
+    foreign = _foreign_jsonld_address(jsonld)
+    if foreign:
+        result.uk_check, uk_note = "英国外の住所の記載あり・要確認", f"構造化データの住所: {foreign}"
+        if addr_src and addr_src[1].startswith("構造化データ"):
+            result.region, result.postcode = None, None
     if uk_note:
         result.evidence.append(("英国所在", addr_src[0] if addr_src else home.url, uk_note))
 
@@ -220,11 +251,10 @@ def analyse(result: ResearchResult, infos: list[tuple[PageInfo, str]], site_url:
     features = C.detect_features(pages)
     for label, url, ex in features:
         result.evidence.append(("特徴", url, f"{label}: {ex}"))
-    town = None
     region_only = None
-    if postcode and postcode_region(postcode):
-        _, town, region_only = postcode_region(postcode)
-    result.summary = C.build_summary(region_only, town, result.used_sales, cls, [f[0] for f in features])
+    if result.postcode and postcode_region(result.postcode):
+        _, _, region_only = postcode_region(result.postcode)
+    result.summary = C.build_summary(region_only, result.postcode, result.used_sales, cls, [f[0] for f in features])
 
     # メール
     seen = set()

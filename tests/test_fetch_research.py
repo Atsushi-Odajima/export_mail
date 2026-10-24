@@ -88,7 +88,7 @@ def test_research_full_site():
     assert not any(c.kind == "form" and c.value.rstrip("/") == BASE for c in r.contacts)
     assert BASE + "/private/secret" not in web.requests
     assert any("1998年創業" in e[2] for e in r.evidence)
-    assert "ヨークシャー（Leeds周辺）の中古車販売店です。" in r.summary
+    assert "ヨークシャー（郵便番号 LS1 4AP）の中古車販売店です。" in r.summary
 
 
 def test_research_failure_reason_recorded():

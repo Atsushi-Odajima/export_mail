@@ -27,10 +27,17 @@ def export_seed(conn, dealer_ids: list[str], path: Path) -> dict:
         out[table] = [dict(r) for r in conn.execute(f"SELECT * FROM dealers WHERE id IN ({marks})", dealer_ids)]
     out["contact_methods"] = [dict(r) for r in conn.execute(
         f"SELECT * FROM contact_methods WHERE dealer_id IN ({marks})", dealer_ids)]
+    # 配布する根拠は各販売店の最新の調査分と手動登録分だけ（開発中の試行の重複を配らない）
+    latest = {r["dealer_id"]: r["id"] for r in conn.execute(
+        f"SELECT dealer_id, id FROM research_runs r WHERE dealer_id IN ({marks}) AND started_at = "
+        "(SELECT MAX(started_at) FROM research_runs r2 WHERE r2.dealer_id = r.dealer_id)", dealer_ids)}
     out["evidence"] = [{k: v for k, v in dict(r).items() if k != "id"} for r in conn.execute(
-        f"SELECT * FROM evidence WHERE dealer_id IN ({marks}) ORDER BY id", dealer_ids)]
+        f"SELECT * FROM evidence WHERE dealer_id IN ({marks}) ORDER BY id", dealer_ids)
+        if r["origin"] == "手動" or r["research_run_id"] == latest.get(r["dealer_id"])]
     out["research_runs"] = [dict(r) for r in conn.execute(
-        f"SELECT * FROM research_runs WHERE dealer_id IN ({marks})", dealer_ids)]
+        f"SELECT * FROM research_runs WHERE dealer_id IN ({marks})", dealer_ids) if r["id"] in latest.values()]
+    for r in out["research_runs"]:
+        r["job_id"] = None
     contact_ids = [c["id"] for c in out["contact_methods"]]
     ids = dealer_ids + contact_ids
     marks2 = ",".join("?" * len(ids))
