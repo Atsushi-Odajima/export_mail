@@ -1,0 +1,27 @@
+// Samurai Dealer Research（iPhone 向け）— Cloudflare Workers + D1（無料プランで動く設定）
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "samurai-dealer-research",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // 画面（PWA）は静的ファイルとして配信。/api/* だけ Worker が処理する
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  // データベース（D1）。Deploy to Cloudflare / wrangler deploy で自動作成される
+  "d1_databases": [
+    { "binding": "DB", "database_name": "samurai-dealer-research" }
+  ],
+  // 1 分ごとに調査を少しずつ進める（1 回 1 ページ。無料プランの CPU 10ms 制限に合わせる）
+  "triggers": { "crons": ["* * * * *"] },
+  // 初期データ（実在の英国販売店）を Worker に同梱（公開URLでは配信しない）
+  "rules": [{ "type": "Text", "globs": ["**/*.seed"], "fallthrough": false }],
+  "observability": { "enabled": true },
+  "vars": {
+    "APP_ENV": "production"
+  }
+}

@@ -29,3 +29,16 @@
 ビルドにだけ使うもの（配布物には含まれません）：PyInstaller 6.22.3（GPLv2 以降・ブートローダー例外付き。例外により生成した実行ファイルの配布条件は制限されません）、pytest 9.1.1（MIT）。
 
 候補発見で使うデータ：OpenStreetMap © OpenStreetMap contributors（ODbL 1.0）。
+
+## iPhone 版（`mobile/`）
+
+iPhone 版は外部のライブラリを画面にも Worker にも同梱していません（画面は素の JavaScript、Worker は Cloudflare Workers の標準機能のみ）。
+開発・試験・公開にだけ使うもの（`mobile/package.json` で版を固定。2026-10-24 確認）：
+
+| ツール | 版 | ライセンス |
+|---|---|---|
+| wrangler | 4.149.0 | MIT OR Apache-2.0 |
+| miniflare | 4.20260730.0 | MIT |
+| @cloudflare/workers-types | 5.20261009.1 | MIT OR Apache-2.0 |
+| typescript | 5.9.3 | Apache-2.0 |
+| vitest | 4.1.12 | MIT |

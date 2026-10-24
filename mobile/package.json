@@ -1,0 +1,28 @@
+{
+  "name": "samurai-dealer-research-mobile",
+  "private": true,
+  "version": "2.0.0",
+  "description": "英国中古車販売店の調査アプリ（iPhone向け・Cloudflare Workers + D1）",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build:seed": "node scripts/build-seed.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261009.1",
+    "miniflare": "4.20260730.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.12",
+    "wrangler": "4.149.0"
+  },
+  "cloudflare": {
+    "bindings": {
+      "SETUP_TOKEN": {
+        "description": "最初の管理者を作るときに入力する設定用トークン（20文字以上の推測されにくい文字列。iPhoneのパスワード生成で作れます）。初期設定後は変更してかまいません。"
+      }
+    }
+  },
+  "type": "module"
+}

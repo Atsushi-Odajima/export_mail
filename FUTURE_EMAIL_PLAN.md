@@ -24,6 +24,27 @@
 
 ---
 
+### iPhone 版（`mobile/`：Cloudflare Workers ＋ D1）での同じ基礎
+
+| 基礎 | iPhone 版での実装場所 |
+|---|---|
+| 販売店ID・連絡方法ID（PC 版と同じ形式） | `mobile/src/util.ts`（`newId`）、`schema.ts` の版 1（表の構造は PC 版と互換） |
+| 根拠・調査記録・変更履歴・自動値と人の確定値の分離 | `schema.ts`、`repo.ts` |
+| 版管理 | `schema.ts` の `MIGRATIONS`（D1 の batch で版ごとに適用・失敗時は巻き戻し）。既存データがある DB は、画面で「バックアップを保存」を確認してから管理者が更新 |
+| 処理の分離 | 発見 `discovery.ts`／取得 `fetcher.ts`・`netsafe.ts`／読み取り `parse.ts`・`extract.ts`／判定 `classify.ts`・`analyse.ts`／保存 `repo.ts`／進行 `engine.ts`／API `index.ts` |
+| 秘密情報の分離 | Worker のシークレット（`SETUP_TOKEN`・任意の `FIRECRAWL_API_KEY`）または `secrets` 表（バックアップ・CSV に含めない） |
+| ログイン・CSRF・利用者ごとの操作記録 | `auth.ts`、`change_log.changed_by` |
+
+iPhone 版にメール機能を足す場合の要点：
+
+- 将来テーブル（下記）は `schema.ts` に**版 2** として追加します。既存の版 1 は書き換えません。
+- 送信は Worker の定期実行（Cron）から 1 件ずつ行う形になります。1 回の処理の CPU 上限（無料 10ms）と外部通信数（1 回 50 件）に収まるよう、「予約の確定」「1 通の送信」「結果の記録」を別のステップに分けます。
+- Gmail / Microsoft Graph の OAuth の更新トークンは Worker のシークレットまたは暗号化した `secrets` 表に置き、バックアップには含めません。
+- 端末が閉じていても Cron で動くため、PC 版の「送信担当 PC」（`runner_lock`）の代わりに、Worker 1 つだけが送信担当になります。PC 版と iPhone 版の両方から同じ相手に送らないよう、送信機能はどちらか一方でだけ有効にします。
+- 送信は無料枠の Workers からも可能ですが、メールサービス側の送信上限・規約・認証（SPF/DKIM/DMARC）は別に確認が必要です（未検証）。
+
+---
+
 ## 2. 将来のデータ関連図
 
 ```mermaid

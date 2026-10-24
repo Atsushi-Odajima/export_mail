@@ -6,6 +6,12 @@
 - 営業メールの作成・送信、問い合わせフォームへの送信、予約送信は**実装していません**。将来の追加方法は [FUTURE_EMAIL_PLAN.md](FUTURE_EMAIL_PLAN.md) にまとめています。
 - 確認済みの初期データ（実在の英国販売店）を同梱しています。内容と確認方法は [docs/INITIAL_DATA_REPORT.md](docs/INITIAL_DATA_REPORT.md)、検証結果は [docs/VERIFICATION.md](docs/VERIFICATION.md) を参照してください。
 
+## iPhone 版（主な使い方）
+
+**PC を使わず iPhone だけで使う場合は [mobile/README.md](mobile/README.md) を参照してください。** Cloudflare の無料プラン（Workers ＋ D1）に置き、Safari からホーム画面に追加して使う Web アプリです。調査の規則・データの形・販売店ID は下の Windows 版と共通です。
+
+以下は Windows（PC）版の説明です。
+
 ---
 
 ## 1. 起動（Windows 配布版）
