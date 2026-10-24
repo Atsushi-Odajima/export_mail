@@ -10,7 +10,8 @@
 
 ## 1. 起動（Windows 配布版）
 
-1. `SamuraiDealerResearch-windows.zip` を任意の場所（例：`ドキュメント`）に展開します。
+1. `SamuraiDealerResearch-windows.zip` を入手します（GitHub の Actions → `windows-build` の最新の成功した実行 → Artifacts。30 日で消えるため、必要なら Windows PC で `scripts\build_windows.bat` を実行して作り直せます）。
+   ZIP を任意の場所（例：`ドキュメント`）に展開します。
 2. 展開したフォルダーの `SamuraiDealerResearch.exe` をダブルクリックします。
    - 黒いウィンドウが開き、少しすると既定のブラウザーで日本語の画面（`http://127.0.0.1:8765/`）が開きます。
    - 初回だけ Windows の「PC を保護しました」が出る場合があります（署名のないアプリのため）。「詳細情報」→「実行」で起動します。

@@ -4,7 +4,7 @@
 
 開発環境：Linux コンテナ（Python 3.12）。Windows 実機はなく、Windows の確認は GitHub Actions の Windows ランナー（windows-latest）で行います（第 4 節）。
 
-## 1. 自動試験（71 件・すべて成功）
+## 1. 自動試験（72 件・Linux と Windows の両方ですべて成功）
 
 | 仕様の検証項目 | 試験 |
 |---|---|
@@ -52,7 +52,21 @@
 
 ## 4. Windows 配布版
 
-（GitHub Actions の結果を追記）
+GitHub Actions の Windows ランナー（windows-latest、Windows Server・64bit、PowerShell 7）で実行：
+https://github.com/Atsushi-Odajima/export_mail/actions/runs/40080941012 （2026-10-24、成功）
+
+| 手順 | 結果 |
+|---|---|
+| 固定版の依存関係の導入・試験 72 件 | 成功 |
+| PyInstaller でフォルダー一式（`SamuraiDealerResearch.exe`）を作成 | 成功 |
+| PATH から Python を外して exe を起動 → `/healthz` 応答 → 一覧画面に「販売店一覧」 | 成功 |
+| 初期データの読込（CSV 出力の行数） | 30 件 |
+| データフォルダー（`--data-dir`）に `dealers.sqlite3` が作られる | 成功 |
+| 画面の「アプリを終了」（CSRF トークン付き POST）→ プロセス終了・サーバー応答なし | 成功（終了を確認） |
+| 再起動後もデータが残る（件数一致） | 成功 |
+| 配布 ZIP の作成 | `SamuraiDealerResearch-windows.zip`（19.9MB、成果物として 30 日保存。上記ページの Artifacts から取得） |
+
+未確認：Windows 10/11 のデスクトップ PC での実際の操作（ダブルクリック起動・既定ブラウザーが開くこと・SmartScreen の表示）。ランナーはサーバー版 Windows で、ブラウザーの自動起動は無効（`--no-browser`）にして確認しています。
 
 ## 5. 残る制限
 
