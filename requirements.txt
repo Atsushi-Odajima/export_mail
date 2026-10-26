@@ -10,12 +10,18 @@ anyio==4.15.1
     #   starlette
 beautifulsoup4==4.15.0
     # via -r requirements.in
+bottle==0.13.4 ; sys_platform == 'win32'
+    # via pywebview
 certifi==2026.10.23
     # via
     #   httpcore
     #   httpx
+cffi==2.1.1 ; sys_platform == 'win32'
+    # via clr-loader
 click==8.5.0
     # via uvicorn
+clr-loader==0.3.1 ; sys_platform == 'win32'
+    # via pythonnet
 fastapi==0.162.0
     # via -r requirements.in
 h11==0.16.0
@@ -36,11 +42,19 @@ markupsafe==3.0.4
     # via jinja2
 opentelemetry-api==1.45.1
     # via fastapi
+proxy-tools==0.1.0 ; sys_platform == 'win32'
+    # via pywebview
+pycparser==3.12 ; implementation_name != 'PyPy' and sys_platform == 'win32'
+    # via cffi
 pydantic==2.14.1
     # via fastapi
 pydantic-core==2.50.1
     # via pydantic
 python-multipart==0.0.32
+    # via -r requirements.in
+pythonnet==3.2.1 ; sys_platform == 'win32'
+    # via pywebview
+pywebview==6.2.1 ; sys_platform == 'win32'
     # via -r requirements.in
 soupsieve==3.0.4
     # via beautifulsoup4
@@ -54,6 +68,7 @@ typing-extensions==4.16.0
     #   opentelemetry-api
     #   pydantic
     #   pydantic-core
+    #   pywebview
     #   starlette
     #   typing-inspection
 typing-inspection==0.4.4

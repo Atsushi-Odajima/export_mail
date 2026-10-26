@@ -1,6 +1,7 @@
 """起動とコマンド。
 
-  SamuraiDealerResearch.exe                    ローカルモード（127.0.0.1 のみ・ブラウザーを開く）
+  SamuraiDealerResearch.exe                    専用ウィンドウで起動（Windows の通常の使い方。127.0.0.1 のみ）
+  SamuraiDealerResearch-cli.exe                ローカルモード（127.0.0.1 のみ・既定のブラウザーで開く）
   SamuraiDealerResearch.exe shared ...         共有モード（ログイン必須）
   SamuraiDealerResearch.exe create-user NAME   共有モードの利用者を作成（パスワードは対話入力）
   SamuraiDealerResearch.exe backup / restore ZIP / export-csv FILE / migrate
@@ -66,8 +67,10 @@ def existing_instance(paths: Paths) -> str | None:
     return None
 
 
-def run_server(paths: Paths, host: str, port: int, mode: str, open_browser: bool, allowed_hosts: set[str] | None,
-               secure_cookies: bool, ssl_cert: str | None = None, ssl_key: str | None = None) -> None:
+def build_server(paths: Paths, host: str, port: int, mode: str, allowed_hosts: set[str] | None,
+                 secure_cookies: bool, ssl_cert: str | None = None, ssl_key: str | None = None,
+                 on_shutdown=None):
+    """画面のサーバーを作る（まだ動かさない）。戻り値は (uvicorn.Server, app, 画面の URL)。"""
     import uvicorn
 
     from .web import create_app
@@ -78,26 +81,25 @@ def run_server(paths: Paths, host: str, port: int, mode: str, open_browser: bool
         srv = server_holder.get("server")
         if srv:
             threading.Timer(0.5, lambda: setattr(srv, "should_exit", True)).start()
+        if on_shutdown:
+            on_shutdown()
 
     app = create_app(paths, mode=mode, allowed_hosts=allowed_hosts, secure_cookies=secure_cookies, shutdown_cb=shutdown)
-    config = uvicorn.Config(app, host=host, port=port, log_level="warning", access_log=False,
+    # log_config=None：コンソールのない実行ファイル（専用ウィンドウ版）でも標準出力を使わない
+    config = uvicorn.Config(app, host=host, port=port, log_level="warning", access_log=False, log_config=None,
                             ssl_certfile=ssl_cert, ssl_keyfile=ssl_key, proxy_headers=False)
     server = uvicorn.Server(config)
     server_holder["server"] = server
-    lock = paths.data_dir / LOCK_NAME
-    if mode == "local":
-        lock.write_text(json.dumps({"port": port, "pid": os.getpid()}), encoding="utf-8")
     scheme = "https" if ssl_cert else "http"
     url = f"{scheme}://{'127.0.0.1' if host in ('127.0.0.1', '0.0.0.0') else host}:{port}/"
-    print(f"{APP_NAME} {__version__}")
-    print(f"データの保存場所: {paths.data_dir}")
-    print(f"画面: {url}")
+    return server, app, url
+
+
+def serve(paths: Paths, server, app, mode: str, port: int, extra_lock: dict | None = None) -> None:
+    """サーバーを動かし、終わったら調査を止めて起動中の印を消す（呼び出したスレッドで動く）。"""
+    lock = paths.data_dir / LOCK_NAME
     if mode == "local":
-        print("終了するには、画面右上の「アプリを終了」を押すか、このウィンドウで Ctrl+C を押してください。")
-    else:
-        print("共有モードで起動しました。終了するにはこのウィンドウで Ctrl+C を押してください。")
-    if open_browser:
-        threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+        lock.write_text(json.dumps({"port": port, "pid": os.getpid(), **(extra_lock or {})}), encoding="utf-8")
     try:
         server.run()
     finally:
@@ -107,7 +109,45 @@ def run_server(paths: Paths, host: str, port: int, mode: str, open_browser: bool
                 lock.unlink()
             except OSError:
                 pass
+
+
+def run_server(paths: Paths, host: str, port: int, mode: str, open_browser: bool, allowed_hosts: set[str] | None,
+               secure_cookies: bool, ssl_cert: str | None = None, ssl_key: str | None = None) -> None:
+    server, app, url = build_server(paths, host, port, mode, allowed_hosts, secure_cookies, ssl_cert, ssl_key)
+    print(f"{APP_NAME} {__version__}")
+    print(f"データの保存場所: {paths.data_dir}")
+    print(f"画面: {url}")
+    if mode == "local":
+        print("終了するには、画面右上の「アプリを終了」を押すか、このウィンドウで Ctrl+C を押してください。")
+    else:
+        print("共有モードで起動しました。終了するにはこのウィンドウで Ctrl+C を押してください。")
+    if open_browser:
+        threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+    mutex = single_instance_marker()
+    try:
+        serve(paths, server, app, mode, port)
+    finally:
+        del mutex
         print("終了しました。")
+
+
+def single_instance_marker():
+    """起動中の印（Windows の名前付きミューテックス）。インストーラーが更新前に「アプリを終了してください」と案内するために使う。"""
+    if sys.platform != "win32":
+        return None
+    try:
+        import ctypes
+
+        return ctypes.windll.kernel32.CreateMutexW(None, False, "SamuraiDealerResearch.Running")
+    except Exception:
+        return None
+
+
+def free_port(start: int) -> int:
+    for candidate in range(start, start + 25):
+        if port_free("127.0.0.1", candidate):
+            return candidate
+    sys.exit("使用できるポートが見つかりません")
 
 
 def cmd_local(args, paths: Paths) -> None:
@@ -116,15 +156,15 @@ def cmd_local(args, paths: Paths) -> None:
         print(f"すでに起動しています。ブラウザーで開きます: {running}")
         webbrowser.open(running + "/")
         return
-    port = args.port
-    for candidate in range(args.port, args.port + 25):
-        if port_free("127.0.0.1", candidate):
-            port = candidate
-            break
-    else:
-        sys.exit("使用できるポートが見つかりません")
+    port = free_port(args.port)
     allowed = {f"127.0.0.1:{port}", f"localhost:{port}"}
     run_server(paths, "127.0.0.1", port, "local", not args.no_browser, allowed, secure_cookies=False)
+
+
+def cmd_desktop(args, paths: Paths) -> None:
+    from .desktop import run_desktop
+
+    run_desktop(paths, args.port)
 
 
 def cmd_shared(args, paths: Paths) -> None:
@@ -221,10 +261,15 @@ def cmd_migrate(args, paths: Paths) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
+    for name in ("stdout", "stderr"):
+        if getattr(sys, name) is None:  # コンソールのない実行ファイル
+            setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))
     parser = argparse.ArgumentParser(prog="SamuraiDealerResearch", description=f"{APP_NAME} {__version__}")
     parser.add_argument("--data-dir", help="データの保存先（既定: 利用者フォルダー）")
     sub = parser.add_subparsers(dest="cmd")
-    p = sub.add_parser("local", help="ローカルモードで起動（既定）")
+    p = sub.add_parser("desktop", help="専用ウィンドウで起動（Windows の既定）")
+    p.add_argument("--port", type=int, default=8765)
+    p = sub.add_parser("local", help="ローカルモードで起動（ブラウザーで開く）")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--no-browser", action="store_true")
     p = sub.add_parser("shared", help="共有モード（ログイン必須）で起動")
@@ -251,20 +296,51 @@ def main(argv: list[str] | None = None) -> None:
     setup_logging(paths)
     from .db import MigrationError
 
-    handlers = {"local": cmd_local, "shared": cmd_shared, "create-user": cmd_create_user, "backup": cmd_backup,
-                "restore": cmd_restore, "export-csv": cmd_export, "migrate": cmd_migrate}
+    handlers = {"desktop": cmd_desktop, "local": cmd_local, "shared": cmd_shared, "create-user": cmd_create_user,
+                "backup": cmd_backup, "restore": cmd_restore, "export-csv": cmd_export, "migrate": cmd_migrate}
     if args.cmd is None:
-        args.cmd, args.port, args.no_browser = "local", 8765, False
+        args.cmd, args.port, args.no_browser = default_command(), 8765, False
     try:
         handlers[args.cmd](args, paths)
     except MigrationError as exc:
-        print(str(exc))
-        print("README の「更新に失敗したとき」を参照し、backups フォルダーの更新前バックアップから復元できます。")
-        if getattr(sys, "frozen", False):
-            input("Enter キーで閉じます")
+        message = f"{exc}\n\nREADME の「更新に失敗したとき」を参照し、backups フォルダーの更新前バックアップから復元できます。"
+        if is_windowed():
+            show_error(message)
+        else:
+            print(message)
+            if getattr(sys, "frozen", False):
+                input("Enter キーで閉じます")
         sys.exit(1)
     except KeyboardInterrupt:
         pass
+    except Exception as exc:
+        logging.getLogger("sdr").exception("起動に失敗しました")
+        if is_windowed():
+            show_error(f"起動に失敗しました：{exc}\n\n詳しくは {paths.logs / 'app.log'} を確認してください。")
+            sys.exit(1)
+        raise
+
+
+def is_windowed() -> bool:
+    """コンソールのない実行ファイル（専用ウィンドウ版の SamuraiDealerResearch.exe）として動いているか。"""
+    return bool(getattr(sys, "frozen", False)) and not Path(sys.executable).stem.lower().endswith("-cli")
+
+
+def default_command() -> str:
+    """引数なしで起動したときの動作。専用ウィンドウ版の exe は desktop、それ以外は従来どおりブラウザーで開く。"""
+    return "desktop" if is_windowed() else "local"
+
+
+def show_error(message: str) -> None:
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            ctypes.windll.user32.MessageBoxW(None, message, APP_NAME, 0x10)
+            return
+        except Exception:
+            pass
+    print(message, file=sys.stderr)
 
 
 if __name__ == "__main__":

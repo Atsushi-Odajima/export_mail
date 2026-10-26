@@ -11,4 +11,12 @@ copy README.md dist\SamuraiDealerResearch\ >nul
 copy FUTURE_EMAIL_PLAN.md dist\SamuraiDealerResearch\ >nul
 copy LICENSES.md dist\SamuraiDealerResearch\ >nul
 powershell -NoProfile -Command "Compress-Archive -Force -Path dist\SamuraiDealerResearch -DestinationPath SamuraiDealerResearch-windows.zip"
+rem インストーラー（Inno Setup 6 を導入済みの場合だけ作成）
+set ISCC="%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+if exist %ISCC% (
+  for /f %%v in ('python -c "import sdr; print(sdr.__version__)"') do %ISCC% /DAppVersion=%%v installer\SamuraiDealerResearch.iss || exit /b 1
+  echo 完成: dist-installer\SamuraiDealerResearch-Setup-*.exe
+) else (
+  echo Inno Setup 6 が見つからないため、インストーラーは作りませんでした（https://jrsoftware.org/isdl.php）
+)
 echo 完成: SamuraiDealerResearch-windows.zip

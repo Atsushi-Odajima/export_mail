@@ -138,6 +138,20 @@ def create_app(paths: Paths, mode: str = "local", allowed_hosts: set[str] | None
     def healthz():
         return {"ok": True, "app": APP_NAME, "version": __version__}
 
+    # 専用ウィンドウ版：2 回目に起動されたとき、既存のウィンドウを前面に出す。
+    # 合言葉は起動中の印（利用者フォルダー内の running.json）にだけ書かれ、同じ PC の同じ利用者しか知らない。
+    app.state.focus_token = None
+    app.state.focus_cb = None
+
+    @app.post("/desktop/focus")
+    def desktop_focus(request: Request):
+        token = request.headers.get("x-sdr-focus-token") or ""
+        expected = app.state.focus_token
+        if mode != "local" or not expected or not secrets.compare_digest(token, expected) or not app.state.focus_cb:
+            raise HTTPException(404, "見つかりません")
+        app.state.focus_cb()
+        return {"ok": True}
+
     @app.get("/login", response_class=HTMLResponse)
     def login_page(request: Request, next: str = "/"):
         if mode != "shared":

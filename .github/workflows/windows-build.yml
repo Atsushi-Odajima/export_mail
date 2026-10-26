@@ -1,10 +1,10 @@
-# Windows 配布版のビルドと起動確認（GitHub の Windows 実機ランナーで実行）
+# Windows 配布版（専用ウィンドウ版＋インストーラー）のビルドと起動確認（GitHub の Windows 実機ランナーで実行）
 name: windows-build
 
 on:
   push:
     branches: ["**"]
-    paths-ignore: ["**.md"]
+    paths-ignore: ["**.md", "mobile/**"]
   workflow_dispatch:
 
 permissions:
@@ -13,7 +13,7 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -27,11 +27,11 @@ jobs:
         run: python -m pytest -q -p no:cacheprovider tests
       - name: 実行ファイルの作成（PyInstaller）
         run: pyinstaller --noconfirm SamuraiDealerResearch.spec
-      - name: 起動確認（Python なしの実行ファイルを起動し、画面・初期データ・終了を確認）
+      - name: 起動確認（ブラウザー版・Python なしで起動し、画面・初期データ・終了・再起動を確認）
         shell: pwsh
         run: |
           $data = Join-Path $env:RUNNER_TEMP "sdr-data"
-          $exe = "dist\SamuraiDealerResearch\SamuraiDealerResearch.exe"
+          $exe = "dist\SamuraiDealerResearch\SamuraiDealerResearch-cli.exe"
           $env:PATH = "C:\Windows\System32;C:\Windows"   # Python を外した状態で起動
           $p = Start-Process -FilePath $exe -ArgumentList "--data-dir", $data, "local", "--no-browser", "--port", "8799" -PassThru
           $ok = $false
@@ -46,27 +46,116 @@ jobs:
           $rows = ([System.Text.Encoding]::UTF8.GetString($csv.RawContentStream.ToArray()) -split "`r`n" | Where-Object { $_ -ne "" }).Count - 1
           Write-Host "初期データ件数: $rows"
           if ($rows -lt 20) { throw "初期データが読み込まれていません" }
-          if (-not (Test-Path (Join-Path $data "dealers.sqlite3"))) { throw "データフォルダーに保存されていません" }
           $token = [regex]::Match($page.Content, 'name="csrf_token" value="([^"]+)"').Groups[1].Value
           Invoke-WebRequest http://127.0.0.1:8799/shutdown -Method Post -Body @{ csrf_token = $token } -WebSession $s | Out-Null
           if (-not $p.WaitForExit(20000)) { throw "終了操作後もプロセスが残っています" }
-          Start-Sleep -Seconds 1
-          try { Invoke-RestMethod http://127.0.0.1:8799/healthz -TimeoutSec 3; throw "終了後もサーバーが応答しています" } catch { Write-Host "終了を確認しました" }
-          # 2 回目の起動でデータが残っていること（更新・再起動でデータを消さない）
           $p2 = Start-Process -FilePath $exe -ArgumentList "--data-dir", $data, "local", "--no-browser", "--port", "8799" -PassThru
           for ($i = 0; $i -lt 60; $i++) { Start-Sleep -Seconds 1; try { Invoke-RestMethod http://127.0.0.1:8799/healthz | Out-Null; break } catch {} }
           $csv2 = Invoke-WebRequest http://127.0.0.1:8799/export/dealers.csv
           $rows2 = ([System.Text.Encoding]::UTF8.GetString($csv2.RawContentStream.ToArray()) -split "`r`n" | Where-Object { $_ -ne "" }).Count - 1
           if ($rows2 -ne $rows) { throw "再起動後に件数が変わりました" }
           Stop-Process -Id $p2.Id
-          Write-Host "Windows 起動確認 OK"
-      - name: 配布 ZIP の作成
+          Write-Host "ブラウザー版の起動確認 OK"
+      - name: インストーラーの作成（Inno Setup）
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          if (-not (Test-Path $iscc)) { throw "Inno Setup が見つかりません" }
+          $ver = python -c "import sdr; print(sdr.__version__)"
+          & $iscc "/DAppVersion=$ver" installer\SamuraiDealerResearch.iss
+          if ($LASTEXITCODE -ne 0) { throw "インストーラーを作成できませんでした" }
+          Get-ChildItem dist-installer
+      - name: インストール → 専用ウィンドウで起動 → 二重起動 → 更新 → アンインストール（データが残ること）
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $setup = (Get-ChildItem dist-installer\SamuraiDealerResearch-Setup-*.exe).FullName
+          $app = Join-Path $env:LOCALAPPDATA "Programs\SamuraiDealerResearch"
+          $exe = Join-Path $app "SamuraiDealerResearch.exe"
+          $data = Join-Path $env:LOCALAPPDATA "SamuraiDealerResearch"
+          $out = Join-Path $env:RUNNER_TEMP "desktop-check"
+          New-Item -ItemType Directory -Force $out | Out-Null
+
+          # 1. 管理者権限なしの利用者向けインストール（デスクトップのアイコンも作る）
+          Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/TASKS=desktopicon", "/LOG=$out\install.log" -Wait
+          if (-not (Test-Path $exe)) { throw "インストール先に実行ファイルがありません" }
+          if (-not (Test-Path (Join-Path $app "SamuraiDealerResearch-cli.exe"))) { throw "コマンド用の実行ファイルがありません" }
+          $startMenu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Samurai Dealer Research.lnk"
+          $desktop = Join-Path ([Environment]::GetFolderPath("Desktop")) "Samurai Dealer Research.lnk"
+          if (-not (Test-Path $startMenu)) { throw "スタートメニューのショートカットがありません" }
+          if (-not (Test-Path $desktop)) { throw "デスクトップのショートカットがありません" }
+          Write-Host "インストール OK: $app"
+
+          # 2. 専用ウィンドウで起動し、表示内容を確認。表示中にもう一度起動して、2 つ目が既存のウィンドウを前面に出して終わることを確認
+          $env:SDR_DESKTOP_SMOKE = "$out\smoke1.json"
+          $env:SDR_DESKTOP_SMOKE_HOLD = "25"
+          $p = Start-Process $exe -PassThru
+          Remove-Item Env:SDR_DESKTOP_SMOKE, Env:SDR_DESKTOP_SMOKE_HOLD
+          $lock = Join-Path $data "running.json"
+          for ($i = 0; $i -lt 90 -and -not (Test-Path $lock); $i++) { Start-Sleep -Seconds 1 }
+          if (-not (Test-Path $lock)) { throw "起動中の印ができません（起動していません）" }
+          Start-Sleep -Seconds 8
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+          [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+          $bmp.Save("$out\desktop-window.png")
+          $second = Start-Process $exe -PassThru
+          if (-not $second.WaitForExit(30000)) { throw "2 回目の起動が終わりません（二重に起動しています）" }
+          if (-not $p.WaitForExit(90000)) { throw "専用ウィンドウが閉じません" }
+          $r = Get-Content "$out\smoke1.json" -Raw -Encoding utf8 | ConvertFrom-Json
+          Write-Host ("表示確認: " + ($r | ConvertTo-Json -Compress))
+          if ($r.renderer -ne "edgechromium") { throw "Edge WebView2 で表示されていません" }
+          if (-not $r.has_list) { throw "一覧画面が表示されていません" }
+          if ($r.rows -lt 20) { throw "初期データが表示されていません" }
+          if ($r.focus_count -lt 1) { throw "2 回目の起動で既存のウィンドウを前面に出していません" }
+          if (Test-Path $lock) { throw "終了後も起動中の印が残っています" }
+          if (-not (Test-Path (Join-Path $data "dealers.sqlite3"))) { throw "データが保存されていません" }
+
+          # 3. 同じ版で上書きインストール（更新）してもデータが残ること
+          $before = (Get-Item (Join-Path $data "dealers.sqlite3")).Length
+          Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/LOG=$out\upgrade.log" -Wait
+          if (-not (Test-Path (Join-Path $data "dealers.sqlite3"))) { throw "更新でデータが消えました" }
+          Write-Host "更新 OK（データ $before バイトを保持）"
+
+          # 4. 起動中に更新しようとした場合（参考記録。ミューテックスで検出して中止されるはず）
+          $env:SDR_DESKTOP_SMOKE = "$out\smoke2.json"
+          $env:SDR_DESKTOP_SMOKE_HOLD = "40"
+          $p3 = Start-Process $exe -PassThru
+          Remove-Item Env:SDR_DESKTOP_SMOKE, Env:SDR_DESKTOP_SMOKE_HOLD
+          for ($i = 0; $i -lt 90 -and -not (Test-Path $lock); $i++) { Start-Sleep -Seconds 1 }
+          $u = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/LOG=$out\while-running.log" -PassThru
+          if ($u.WaitForExit(60000)) { Write-Host "起動中の更新: 終了コード $($u.ExitCode)（0 以外なら中止された）" } else { Stop-Process -Id $u.Id; Write-Host "起動中の更新: 60 秒で終わらず停止" }
+          $p3.WaitForExit(90000) | Out-Null
+
+          # 5. アンインストール：本体は消え、データは残る
+          Start-Process (Join-Path $app "unins000.exe") -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait
+          for ($i = 0; $i -lt 60 -and (Test-Path $exe); $i++) { Start-Sleep -Seconds 1 }
+          if (Test-Path $exe) { throw "アンインストール後も実行ファイルが残っています" }
+          if (Test-Path $startMenu) { throw "アンインストール後もショートカットが残っています" }
+          if (-not (Test-Path (Join-Path $data "dealers.sqlite3"))) { throw "アンインストールでデータが消えました" }
+          Write-Host "アンインストール OK（データは $data に残っています）"
+      - name: 配布 ZIP の作成（インストールせずに使う場合）
+        if: always()
         shell: pwsh
         run: |
           Copy-Item README.md, FUTURE_EMAIL_PLAN.md, LICENSES.md dist\SamuraiDealerResearch\
           Compress-Archive -Path dist\SamuraiDealerResearch -DestinationPath SamuraiDealerResearch-windows.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: SamuraiDealerResearch-windows
+          name: SamuraiDealerResearch-Setup
+          path: dist-installer/*.exe
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SamuraiDealerResearch-windows-zip
           path: SamuraiDealerResearch-windows.zip
           retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-check
+          path: ${{ runner.temp }}/desktop-check
+          retention-days: 14

@@ -4,3 +4,4 @@ jinja2
 python-multipart
 httpx
 beautifulsoup4
+pywebview==6.2.1 ; sys_platform == "win32"

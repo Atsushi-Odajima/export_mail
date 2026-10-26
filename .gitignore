@@ -10,3 +10,4 @@ secrets.json
 build/
 dist/
 *.zip
+dist-installer/
