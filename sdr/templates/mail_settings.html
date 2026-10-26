@@ -22,7 +22,7 @@
     <label>検証用の宛先（テストモードで実アカウントを使うとき、すべてここへ送ります）<input name="test_recipient" value="{{ opts.test_recipient }}" placeholder="自分の確認用アドレス"></label>
     <label>予定時刻からこの分数を過ぎた予約は送らずに保留（遅延扱い）<input name="late_grace_minutes" value="{{ opts.late_grace_minutes }}"></label>
     <label>受信の定期確認の間隔（分）<input name="sync_interval_minutes" value="{{ opts.sync_interval_minutes }}"></label>
-    <label>追客の送信前に必要な受信確認の新しさ（分。古ければ保留）<input name="sync_fresh_minutes" value="{{ opts.sync_fresh_minutes }}"></label>
+    <label>予約・追客の送信前に必要な受信確認の新しさ（分。古ければ保留）<input name="sync_fresh_minutes" value="{{ opts.sync_fresh_minutes }}"></label>
     <label>配信停止リンク用の公開アドレス（https://…。外部から開けるときだけ。空欄なら「返信で停止」を案内）<input name="public_base_url" value="{{ opts.public_base_url }}"></label>
     {% if is_admin %}<button>保存</button>{% endif %}</form>
 </section>
