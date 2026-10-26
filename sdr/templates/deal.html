@@ -1,0 +1,90 @@
+{% extends "base.html" %}{% from "macros.html" import csrf_field, extlink, cats %}
+{% block title %}{{ deal.title }} - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<p class="small"><a href="/deals">← 営業案件</a> ／ <a href="/dealers/{{ deal.dealer_id }}">販売店の詳細</a></p>
+<h1>{{ deal.dealer_name }}：{{ deal.title }}</h1>
+<p class="muted small">案件ID <span class="mono">{{ deal.id }}</span> ／ 状態 <span class="state">{{ deal.stage }}</span> ／ {% include "_tz.html" %}</p>
+{% if supp %}<p class="box warn">送信停止中：{{ supp|join('、') }}</p>{% endif %}
+<div class="grid2">
+<section class="card">
+  <h2>販売店の情報（文面の根拠）</h2>
+  <table class="kv"><tr><th>サイト</th><td>{{ extlink(dealer.website_url) }}</td></tr><tr><th>分類</th><td>{{ cats(dealer.categories) }}（{{ dealer.category_basis or '根拠なし' }}）</td></tr>
+  <tr><th>概要</th><td>{{ dealer.summary or '—' }}</td></tr><tr><th>公開メール</th><td class="mono">{{ emails|join(', ') or '確認できていません' }}</td></tr>
+  <tr><th>フォーム</th><td>{% for f in dealer.forms_ok %}{{ extlink(f.value, 'フォームを開く') }} {% else %}—{% endfor %}<br><span class="small muted">問い合わせフォームへの自動入力・送信はしません。ブラウザーで開いて利用者が操作します。</span></td></tr></table>
+</section>
+<section class="card">
+  <h2>案件の状態・次の対応</h2>
+  <form method="post" action="/deals/{{ deal.id }}/edit" class="stack two">{{ csrf_field(csrf) }}
+    <label>案件名<input name="title" value="{{ deal.title }}"></label>
+    <label>担当者<input name="owner" value="{{ deal.owner or '' }}"></label>
+    <label>状態<select name="stage">{% for s in DEAL_STAGES %}<option {{ 'selected' if s == deal.stage }}>{{ s }}</option>{% endfor %}</select></label>
+    <label>相手の担当者<select name="person_id"><option value="">不明</option>{% for p in people %}<option value="{{ p.id }}" {{ 'selected' if p.id == deal.person_id }}>{{ p.name or p.email }}</option>{% endfor %}</select></label>
+    <label>次の対応日<input type="date" name="next_date" value="{{ deal.next_action_at[:10] if deal.next_action_at else '' }}"></label>
+    <label>時刻<input type="time" name="next_time" value="09:00"><input type="hidden" name="tz" value="{{ tz }}"></label>
+    <label class="wide">次の対応<input name="next_action" value="{{ deal.next_action or '' }}"></label>
+    <label class="wide">メモ<textarea name="notes" rows="3">{{ deal.notes or '' }}</textarea></label>
+    <fieldset class="wide"><legend>営業メールを送ってよいかの判断（人が行う。AI・アプリは判断しません）</legend>
+      <label class="check"><input type="checkbox" name="send_allowed" value="1" {{ 'checked' if deal.send_allowed }}>この案件では営業メールを送ってよい（実送信モードで必要）</label>
+      <label>判断の根拠（例：法人の公開営業窓口・事前の了承・英国の規則を確認済み）<input name="send_basis" value="{{ deal.send_basis or '' }}" size="60"></label>
+      <span class="small muted">公開メールを見つけたことは、送信の許可を意味しません。</span></fieldset>
+    <button>保存</button>
+  </form>
+</section>
+</div>
+
+<section class="card">
+  <h2>文面を作る</h2>
+  <form method="post" action="/deals/{{ deal.id }}/drafts/new" class="stack two">{{ csrf_field(csrf) }}
+    <label>作り方<select name="method"><option value="template">テンプレートで作る（AI 不要）</option><option value="manual">手動で書く（AI へ渡す指示文のコピーもここから）</option>
+      <option value="ai" {{ 'disabled' if not (ai_status.enabled and ai_status.has_key) }}>AI で作る{{ '（未設定）' if not (ai_status.enabled and ai_status.has_key) }}</option></select></label>
+    <label>段階<select name="step">{% for k, v in STEPS.items() if k != 'reply' %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></label>
+    <label>送信元<select name="account_id">{% for a in accounts %}<option value="{{ a.id }}">{{ a.label }}（{{ a.from_address }}）</option>{% else %}<option value="">（メール接続が未設定）</option>{% endfor %}</select></label>
+    <label>宛先<input name="to_address" list="emails" value="{{ emails[0] if emails else '' }}"></label>
+    <datalist id="emails">{% for e in emails %}<option value="{{ e }}">{% endfor %}</datalist>
+    <label class="wide">AI への指示（日本語・任意）<input name="instruction" placeholder="例：スポーツカーの在庫が多いので、日本の90年代スポーツカーを紹介したい"></label>
+    <button>下書きを作る</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>初回・2回目・3回目・掘り起こしをまとめて予約</h2>
+  <p class="small muted">文面（テンプレートまたは AI）と予約をまとめて作ります。予約は各文面を確認して承認するまで「承認待ち」で、送られません。返信を受けたら追客（2回目・3回目）は自動で取り消します。</p>
+  <form method="post" action="/deals/{{ deal.id }}/sequence" class="stack">{{ csrf_field(csrf) }}
+    <div class="toolbar"><label>送信元 <select name="account_id">{% for a in accounts %}<option value="{{ a.id }}">{{ a.label }}</option>{% endfor %}</select></label>
+      <label>宛先 <input name="to_address" list="emails" value="{{ emails[0] if emails else '' }}" required></label>
+      <label>作り方 <select name="method"><option value="template">テンプレート</option><option value="ai" {{ 'disabled' if not (ai_status.enabled and ai_status.has_key) }}>AI</option></select></label>
+      <label class="check"><input type="checkbox" name="stop_on_reply" value="1" checked>返信があれば追客を止める</label>
+      <input type="hidden" name="name" value="営業の一連の予定"></div>
+    <table class="list small"><thead><tr><th>送る回</th><th>日付</th><th>時刻</th><th>タイムゾーン</th><th>2 回ある時刻（10月の夏時間終了日のみ）</th></tr></thead><tbody>
+    {% for s in ['initial', 'followup1', 'followup2', 'reactivation'] %}<tr>
+      <td><label class="check"><input type="checkbox" name="use_{{ s }}" value="1" {{ 'checked' if s in ('initial', 'followup1', 'followup2') }}>{{ STEPS[s] }}</label></td>
+      <td><input type="date" name="{{ s }}_date"></td><td><input type="time" name="{{ s }}_time" value="10:00"></td>
+      <td><select name="{{ s }}_tz">{% for k, v in TZ_CHOICES.items() %}<option value="{{ k }}" {{ 'selected' if k == 'Europe/London' }}>{{ v }}</option>{% endfor %}</select></td>
+      <td><select name="{{ s }}_fold"><option value="">—</option><option value="0">1 回目（夏時間 BST）</option><option value="1">2 回目（冬時間 GMT）</option></select></td></tr>{% endfor %}
+    </tbody></table>
+    <label>AI への指示（AI の場合）<input name="instruction"></label>
+    <button>文面と予約を作る</button>
+  </form>
+</section>
+
+<div class="grid2">
+<section class="card"><h2>文面（下書き）</h2>
+<table class="list small"><thead><tr><th>段階</th><th>件名</th><th>状態</th><th>作り方</th><th>版</th></tr></thead><tbody>
+{% for r in drafts %}<tr><td>{{ STEPS[r.step] }}</td><td><a href="/drafts/{{ r.id }}">{{ r.subject or '（件名なし）' }}</a></td><td>{{ r.status }}</td><td>{{ r.source }}</td><td>{{ r.version }}</td></tr>{% else %}<tr><td colspan="5">まだありません</td></tr>{% endfor %}
+</tbody></table></section>
+<section class="card"><h2>予約</h2>
+<table class="list small"><thead><tr><th>段階</th><th>日時</th><th>状態</th><th>件名</th></tr></thead><tbody>
+{% for s in schedules %}<tr><td>{{ STEPS[s.step] }}</td><td>{{ s.send_at_utc|t(tz) }}</td><td><span class="state">{{ s.status }}</span>{% if s.hold_reason %}<br><span class="warntext">{{ s.hold_reason }}</span>{% endif %}</td><td><a href="/drafts/{{ s.draft_id }}">{{ s.subject }}</a></td></tr>{% else %}<tr><td colspan="4">まだありません</td></tr>{% endfor %}
+</tbody></table><p><a href="/schedules">送信・予約の画面で変更・取消</a></p></section>
+</div>
+
+<section class="card"><h2>会話（送受信の履歴）</h2>
+{% for m in messages %}<div class="box msgbox {{ 'warn' if m.needs_action and not m.handled_at }}">
+  <b>{{ '送信' if m.direction == 'out' else '受信' }}</b> {{ (m.sent_at or m.received_at)|t(tz) }} ／ {{ m.kind }}{% if m.note %}（{{ m.note[:60] }}）{% endif %} ／ {{ m.from_addr }} → {{ m.to_addrs }}
+  ／ <a href="/messages/{{ m.id }}">詳細</a><br><b>{{ m.subject }}</b>
+  <details><summary>本文</summary><div class="quote">{{ m.body_text }}</div></details></div>
+{% else %}<p class="muted">まだありません</p>{% endfor %}
+{% if other_messages %}<details><summary>同じ販売店の他の案件・未関連付けの履歴（{{ other_messages|length }} 件）</summary>
+{% for m in other_messages %}<p class="small">{{ (m.sent_at or m.received_at)|t(tz) }} {{ m.kind }} {{ m.subject }} <a href="/messages/{{ m.id }}">詳細</a></p>{% endfor %}</details>{% endif %}
+</section>
+{% endblock %}

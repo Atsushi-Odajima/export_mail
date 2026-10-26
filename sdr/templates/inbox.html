@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% from "macros.html" import csrf_field %}
+{% block title %}受信・対応 - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>受信・対応</h1>
+<div class="toolbar">
+  <form method="post" action="/sync/now" class="inline">{{ csrf_field(csrf) }}<button>受信を確認</button></form>
+  <span class="small">{% for a in accounts %}{{ a.label }}：最終確認 {{ a.last_sync_ok_at|t(tz) }}{% if a.sync_error %} <span class="warntext">（{{ a.status }}：{{ a.sync_error[:80] }}）</span>{% endif %}　{% endfor %}</span>
+</div>
+<p class="toolbar small"><a href="/inbox" class="{{ 'current' if not all and not kind }}">対応待ち</a>
+ {% for k in ['返信', '配信停止要求', '拒否の疑い', '不達通知', '自動応答'] %}<a href="/inbox?all=1&kind={{ k }}" class="{{ 'current' if kind == k }}">{{ k }}</a>{% endfor %}
+ <a href="/inbox?all=1" class="{{ 'current' if all and not kind }}">すべて</a> ／ {% include "_tz.html" %}</p>
+<div class="tablewrap"><table class="list"><thead><tr><th>受信日時</th><th>販売店</th><th>送信元</th><th>件名</th><th>分類</th><th>関連付け</th><th>状態</th></tr></thead><tbody>
+{% for m in msgs %}<tr><td>{{ m.received_at|t(tz) }}</td><td>{% if m.deal_id %}<a href="/deals/{{ m.deal_id }}">{{ m.dealer_name }}</a>{% else %}{{ m.dealer_name or '—' }}{% endif %}</td>
+<td class="mono">{{ m.from_addr }}</td><td><a href="/messages/{{ m.id }}">{{ m.subject or '（件名なし）' }}</a></td>
+<td><span class="state">{{ m.kind }}</span></td><td class="small">{{ m.link_method }}</td><td>{{ '対応済み' if m.handled_at else ('対応待ち' if m.needs_action else '—') }}</td></tr>
+{% else %}<tr><td colspan="7">ありません。</td></tr>{% endfor %}</tbody></table></div>
+<p class="small muted">件名だけでは関連付けません。受信内容は文字として表示し、添付やリンクは開きません。営業と関係のない受信（関連付けできないもの）は保存しません。</p>
+{% endblock %}

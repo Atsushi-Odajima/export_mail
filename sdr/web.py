@@ -21,10 +21,16 @@ from . import classify as C
 from .config import DEFAULT_SETTINGS, Paths, resource_dir
 from .db import connect, migrate
 from .jobs import JobManager
+from . import compose, runtime, web_sales
+from .inbound import SyncService
+from .mail.oauth import PendingAuth
+from .outbound import OutboundService
+from .scheduler import Scheduler
+from .secretstore import SecretStore
 
 log = logging.getLogger("sdr.web")
 
-PUBLIC_PATHS = ("/login", "/static/", "/healthz")
+PUBLIC_PATHS = ("/login", "/static/", "/healthz", "/u/")
 SESSION_COOKIE = "sdr_session"
 SETTING_LABELS = {
     "max_pages_per_site": "1サイトの最大取得ページ数",
@@ -68,8 +74,22 @@ def create_app(paths: Paths, mode: str = "local", allowed_hosts: set[str] | None
     app.state.limiter = auth.LoginLimiter()
     app.state.jobs = jobs or JobManager(paths.db, paths.secrets)
     app.state.shutdown_cb = shutdown_cb
+    # 営業・メールの処理（送信は必ず outbound の共通処理を通す）
+    app.state.secrets = SecretStore(paths.secrets)
+    app.state.outbound = OutboundService(paths.data_dir, paths.db, app.state.secrets)
+    app.state.sync = SyncService(paths.data_dir, paths.db, app.state.secrets)
+    app.state.scheduler = Scheduler(app.state.outbound, app.state.sync)
+    app.state.oauth_pending = PendingAuth()
+    app.state.port = None
+    _c = connect(paths.db)
+    try:
+        compose.ensure_default_templates(_c)
+        runtime.local_instance(paths.data_dir)
+    finally:
+        _c.close()
     if start_jobs:
         app.state.jobs.start()
+        app.state.scheduler.start()
 
     def db():
         return connect(paths.db)
@@ -93,7 +113,7 @@ def create_app(paths: Paths, mode: str = "local", allowed_hosts: set[str] | None
                 return JSONResponse({"error": "ログインが必要です"}, status_code=401)
             request.state.user = user
         else:
-            request.state.user = {"username": "local", "csrf": app.state.local_csrf}
+            request.state.user = {"username": "local", "csrf": app.state.local_csrf, "role": "admin"}
         if request.method == "POST":
             origin = request.headers.get("origin")
             if origin and origin != "null" and urlsplit(origin).netloc != host:
@@ -198,7 +218,7 @@ def create_app(paths: Paths, mode: str = "local", allowed_hosts: set[str] | None
         return resp
 
     # ------------------------------------------------------------------ 一覧
-    @app.get("/", response_class=HTMLResponse)
+    @app.get("/dealers", response_class=HTMLResponse)
     def dealer_list(request: Request, q: str = "", region: str = "", category: str = "", has_email: str = "",
                     has_form: str = "", needs_review: str = "", status: str = "", origin: str = "",
                     include_archived: str = "", msg: str = "", err: str = ""):
@@ -231,13 +251,19 @@ def create_app(paths: Paths, mode: str = "local", allowed_hosts: set[str] | None
             parent = repo.get_dealer(conn, d["parent_dealer_id"]) if d["parent_dealer_id"] else None
             branches = [dict(r) for r in conn.execute(
                 "SELECT id, COALESCE(name_manual, name_auto) AS name FROM dealers WHERE parent_dealer_id=?", (dealer_id,))]
+            from . import sales as _sales
+            deals = _sales.list_deals(conn, dealer_id=dealer_id)
+            people = _sales.list_people(conn, dealer_id)
+            stops = _sales.blocking_suppressions(conn, dealer_id, [])
+            dmsgs = _sales.dealer_messages(conn, dealer_id)
         finally:
             conn.close()
         latest_run = runs[0]["id"] if runs else None
         ev_latest = [e for e in evidence if e["research_run_id"] == latest_run or e["origin"] == "手動"]
         ev_older = [e for e in evidence if e not in ev_latest]
         return page(request, "dealer.html", d=d, ev_latest=ev_latest, ev_older=ev_older, history=history, runs=runs,
-                    dup=dup, parent=parent, branches=branches, msg=msg, err=err)
+                    dup=dup, parent=parent, branches=branches, msg=msg, err=err, deals=deals, people=people, stops=stops,
+                    dmsgs=dmsgs)
 
     @app.post("/dealers/{dealer_id}/edit")
     async def dealer_edit(request: Request, dealer_id: str):
@@ -303,7 +329,7 @@ def create_app(paths: Paths, mode: str = "local", allowed_hosts: set[str] | None
             did = repo.set_contact_status(conn, contact_id, str(form.get("status", "")) or None, actor(request),
                                           str(form.get("note", "")) or None)
         except repo.RepoError as exc:
-            return back("/", err=str(exc))
+            return back("/dealers", err=str(exc))
         finally:
             conn.close()
         return back(f"/dealers/{did}", msg="連絡方法の状態を更新しました")
@@ -355,7 +381,7 @@ def create_app(paths: Paths, mode: str = "local", allowed_hosts: set[str] | None
         finally:
             conn.close()
         if not ids:
-            return back("/", err="調査する販売店がありません")
+            return back("/dealers", err="調査する販売店がありません")
         jid = app.state.jobs.start_research(ids, {"selected": "選択した販売店", "unresearched": "未調査の販売店",
                                                   "failed": "失敗した販売店の再実行"}.get(scope, ""))
         return back(f"/jobs/{jid}", msg=f"{len(ids)} 件の調査を開始しました")
@@ -416,7 +442,7 @@ def create_app(paths: Paths, mode: str = "local", allowed_hosts: set[str] | None
             recent = [j for j in repo.list_jobs(conn, 10) if j["kind"] == "discover"]
         finally:
             conn.close()
-        has_key = bool(discovery.load_secrets(paths.secrets).get("firecrawl_api_key"))
+        has_key = app.state.secrets.has(discovery.FIRECRAWL_KEY)
         links = discovery.manual_search_links(category, region or "London（ロンドン中心部）")
         return page(request, "discover.html", regions=list(discovery.REGIONS), categories=list(discovery.CATEGORY_QUERIES),
                     region=region, category=category, links=links, settings=settings, used=used, has_key=has_key,
@@ -568,7 +594,7 @@ def create_app(paths: Paths, mode: str = "local", allowed_hosts: set[str] | None
         finally:
             conn.close()
         backups = sorted(paths.backups.glob("*.zip"), reverse=True)[:20]
-        has_key = bool(discovery.load_secrets(paths.secrets).get("firecrawl_api_key"))
+        has_key = app.state.secrets.has(discovery.FIRECRAWL_KEY)
         return page(request, "settings.html", settings=settings, labels=SETTING_LABELS, defaults=DEFAULT_SETTINGS,
                     used=used, has_key=has_key, backups=backups, data_dir=str(paths.data_dir), schema=schema,
                     seeded=seeded, msg=msg, err=err)
@@ -590,14 +616,12 @@ def create_app(paths: Paths, mode: str = "local", allowed_hosts: set[str] | None
     @app.post("/settings/firecrawl-key")
     async def settings_key(request: Request):
         form = await form_checked(request)
-        secrets_ = discovery.load_secrets(paths.secrets)
         key = str(form.get("api_key", "")).strip()
         if form.get("clear"):
-            secrets_.pop("firecrawl_api_key", None)
+            app.state.secrets.delete(discovery.FIRECRAWL_KEY)
         elif key:
-            secrets_["firecrawl_api_key"] = key
-        discovery.save_secrets(paths.secrets, secrets_)
-        return back("/settings", msg="APIキーの設定を更新しました（データベース・バックアップ・CSVには保存しません）")
+            app.state.secrets.set(discovery.FIRECRAWL_KEY, key)
+        return back("/settings", msg="APIキーの設定を更新しました（OS の資格情報保管に保存し、データベース・バックアップ・CSVには保存しません）")
 
     # ------------------------------------------------------------------ バックアップ
     @app.post("/backup/create")
@@ -632,13 +656,15 @@ def create_app(paths: Paths, mode: str = "local", allowed_hosts: set[str] | None
             conn = db()
             try:
                 repo.recover_interrupted(conn)
+                runtime.mark_reconcile_required(conn, f"バックアップから復元（{manifest['created_at']} 作成）", actor(request))
             finally:
                 conn.close()
         except backup.BackupError as exc:
             return back("/settings", err=str(exc))
         finally:
             jobs_.paused = False
-        return back("/settings", msg=f"復元しました（作成日時 {manifest['created_at']}）。復元前のデータは {pre.name if pre else '-'} に保存しました")
+        return back("/settings", msg=f"復元しました（作成日時 {manifest['created_at']}）。復元前のデータは {pre.name if pre else '-'} に保存しました。"
+                    "誤送信を防ぐため送信モードを「停止」にしました。「照合」画面で外部の送信履歴を確認してから再開してください")
 
     @app.post("/seed/import")
     async def seed_import(request: Request):
@@ -664,6 +690,9 @@ def create_app(paths: Paths, mode: str = "local", allowed_hosts: set[str] | None
             cb()
         return HTMLResponse("<!doctype html><meta charset='utf-8'><title>終了</title>"
                             "<p style='font-family:sans-serif;padding:2em'>アプリを終了しました。このタブは閉じてかまいません。</p>")
+
+    web_sales.register(app, page=page, form_checked=form_checked, back=back, actor=actor, db=db, paths=paths, mode=mode,
+                       templates=templates)
 
     @app.exception_handler(HTTPException)
     async def http_error(request: Request, exc: HTTPException):

@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% from "macros.html" import csrf_field %}
+{% block title %}利用者 - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>利用者（共有モード）</h1>
+{% if not shared %}<p class="box">現在はこの PC だけで使うローカルモードです（ログインなし・管理者として動作）。共有モードでは、ここで作った利用者でログインします。</p>{% endif %}
+<p class="small">管理者：メール接続・送信モード・AI・利用者・送信停止の解除・照合後の再開ができます。担当者：販売店・案件・文面・承認・予約・受信の対応ができます。既定のパスワードはありません。</p>
+<table class="list"><thead><tr><th>名前</th><th>権限</th><th>状態</th><th>操作</th></tr></thead><tbody>
+{% for u in users %}<tr><td>{{ u.username }}</td><td>{{ '管理者' if u.role == 'admin' else '担当者' }}</td><td>{{ '無効' if u.disabled else '有効' }}</td>
+<td>{% for a, l in [('admin', '管理者にする'), ('member', '担当者にする'), ('disable', '無効にする'), ('enable', '有効にする')] %}<form method="post" action="/users/{{ u.id }}/{{ a }}" class="inline">{{ csrf_field(csrf) }}<button class="secondary small">{{ l }}</button></form>{% endfor %}</td></tr>
+{% else %}<tr><td colspan="4">まだいません。</td></tr>{% endfor %}</tbody></table>
+<section class="card"><h2>利用者を作る・パスワードを変える</h2>
+<form method="post" action="/users/create" class="stack">{{ csrf_field(csrf) }}<label>利用者名（英数字）<input name="username" required></label>
+<label>権限<select name="role"><option value="member">担当者</option><option value="admin">管理者</option></select></label>
+<label>パスワード（10文字以上）<input name="password" type="password" required autocomplete="new-password"></label><label>確認<input name="password2" type="password" required autocomplete="new-password"></label><button>保存</button></form></section>
+{% endblock %}

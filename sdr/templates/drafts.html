@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}文面 - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>文面（下書き・承認・送信済み）</h1>
+<p class="toolbar small">{% for s in ['', '下書き', '承認済み', '送信済み'] %}<a href="/drafts?status={{ s }}" class="{{ 'current' if s == status }}">{{ s or 'すべて' }}</a>{% endfor %}
+ ／ <a href="/templates">テンプレート</a> ／ <a href="/profile">自社情報</a></p>
+<div class="tablewrap"><table class="list"><thead><tr><th>販売店</th><th>段階</th><th>件名</th><th>宛先</th><th>状態</th><th>作り方</th><th>版</th><th>更新</th></tr></thead><tbody>
+{% for r in drafts %}<tr><td>{{ r.dealer_name }}</td><td>{{ STEPS[r.step] }}</td><td><a href="/drafts/{{ r.id }}">{{ r.subject or '（件名なし）' }}</a></td><td class="mono">{{ r.to_address }}</td><td>{{ r.status }}</td><td>{{ r.source }}</td><td>{{ r.version }}</td><td>{{ r.updated_at|t(tz) }}</td></tr>
+{% else %}<tr><td colspan="8">まだありません。営業案件の画面から作れます。</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}

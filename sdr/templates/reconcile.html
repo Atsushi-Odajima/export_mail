@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% from "macros.html" import csrf_field %}
+{% block title %}照合・送信担当 - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>照合・送信担当の稼働環境</h1>
+<div class="box {{ '' if env_ok else 'warn' }}">この環境：<span class="mono">{{ inst.instance_id }}</span>（{{ inst.data_dir }}）<br>
+送信担当：<span class="mono">{{ info.owner or '未設定' }}</span> ／ 送信番号 {{ info.seq }}<br>
+{% if env_ok %}<span class="ok">この環境から送信できます。</span>{% else %}<span class="warntext">{{ env_reason }}</span>{% endif %}</div>
+<p class="small">DB を別の PC にコピーした場合、バックアップから復元した場合、DB が以前の状態に戻った場合は、過去の送信の記録が欠けている可能性があるため送信を止めます。
+外部の送信履歴（送信済みフォルダー）と照合し、結果不明の送信をすべて確定してから、この環境を送信担当にしてください。送信モードは「停止」のままになるので、確認後に設定で変更します。</p>
+<section class="card"><h2>送信結果が分からない試行（{{ unknown|length }}）</h2>
+<table class="list small"><thead><tr><th>試行</th><th>件名・宛先</th><th>開始</th><th>理由</th><th>操作</th></tr></thead><tbody>
+{% for a in unknown %}<tr><td>{{ a.id }}{% if a.test_mode %} <span class="tag">テスト</span>{% endif %}</td><td>{{ a.subject }}<br><span class="mono">{{ a.actual_recipients }}</span><br><span class="mono muted">{{ a.message_id_header }}</span></td><td>{{ a.started_at|t(tz) }}</td><td>{{ a.error or '' }}</td>
+<td><form method="post" action="/attempts/{{ a.id }}/reconcile" class="inline">{{ csrf_field(csrf) }}<button class="small">送信済みフォルダーと照合</button></form>
+<form method="post" action="/attempts/{{ a.id }}/decide" class="inline">{{ csrf_field(csrf) }}<input type="hidden" name="decision" value="送信済み"><button class="secondary small">送信済みと判断</button></form>
+<form method="post" action="/attempts/{{ a.id }}/decide" class="inline" data-confirm="未送信と判断すると、その予約を日時指定で再開して送れるようになります。メールソフトで確認しましたか？">{{ csrf_field(csrf) }}<input type="hidden" name="decision" value="未送信"><button class="secondary small">未送信と判断</button></form></td></tr>
+{% else %}<tr><td colspan="5">ありません。</td></tr>{% endfor %}</tbody></table></section>
+{% if is_admin %}<section class="card"><h2>この環境を送信担当にする（照合後）</h2>
+<form method="post" action="/reconcile/take-ownership" class="stack" data-confirm="この環境を送信担当にします。他の PC・コピー元で同じデータを使って送信していないことを確認しましたか？">{{ csrf_field(csrf) }}
+<label class="check"><input type="checkbox" name="confirm" value="1">外部の送信履歴・返信・停止依頼を確認し、他の環境で送信していないことを確認しました</label><button>送信担当にする</button></form></section>{% endif %}
+<section class="card"><h2>最近の送信試行</h2><table class="list small"><tbody>{% for a in recent %}<tr><td>{{ a.id }}</td><td>{{ a.started_at|t(tz) }}</td><td>{{ a.subject }}</td><td>{{ a.result }}</td><td class="mono">{{ a.instance_id }}</td></tr>{% endfor %}</tbody></table></section>
+{% endblock %}

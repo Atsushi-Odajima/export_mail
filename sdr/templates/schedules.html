@@ -1,0 +1,35 @@
+{% extends "base.html" %}{% from "macros.html" import csrf_field %}
+{% block title %}送信・予約 - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>送信・予約</h1>
+<div class="box mode-{{ send_mode }}">送信モード：<b>{{ send_mode }}</b> ／ 予約処理：{{ '稼働中' if sched.alive else '停止中' }}（最終確認 {{ sched.heartbeat|t(tz) }}）
+  {% if not sched.env_ok %}<br><span class="warntext">{{ sched.env_reason }}</span>{% endif %}
+  <form method="post" action="/sending/stop-all" class="inline" data-confirm="すべての送信を止めます（送信モードを「停止」にします）。よろしいですか？">{{ csrf_field(csrf) }}<button class="danger small">全送信を停止</button></form>
+  <form method="post" action="/scheduler/run" class="inline">{{ csrf_field(csrf) }}<input type="hidden" name="next" value="/schedules"><button class="secondary small">今すぐ受信確認・予約処理</button></form>
+</div>
+{% if unknown %}<p class="box warn">送信結果が分からない試行が {{ unknown|length }} 件あります。自動では再送しません。<a href="/reconcile">照合する</a></p>{% endif %}
+<p class="toolbar small">{% for s in ['', '承認待ち', '予約済み', '保留', '一時停止', '結果確認待ち', '送信前に失敗', '送信済み', '取消'] %}<a href="/schedules?status={{ s }}" class="{{ 'current' if s == status }}">{{ s or 'すべて' }}</a>{% endfor %} ／ {% include "_tz.html" %}</p>
+<div class="tablewrap"><table class="list"><thead><tr><th>予定日時</th><th>販売店・件名</th><th>段階</th><th>送信元</th><th>状態</th><th>操作</th></tr></thead><tbody>
+{% for s in rows %}<tr>
+  <td>{{ s.send_at_utc|t(tz) }}<br><span class="small muted">登録時：{{ TZ_CHOICES.get(s.input_tz, s.input_tz) }}</span></td>
+  <td>{{ s.dealer_name }}<br><a href="/drafts/{{ s.draft_id }}">{{ s.subject }}</a><br><span class="mono small">{{ s.to_address }}</span></td>
+  <td>{{ STEPS[s.step] }}</td><td>{{ s.account_label }}</td>
+  <td><span class="state s-{{ s.status }}">{{ s.status }}</span>{% if s.hold_reason %}<br><span class="small warntext">{{ s.hold_reason }}</span>{% endif %}</td>
+  <td class="small">
+    {% if s.status in ('承認待ち', '予約済み', '保留') %}<form method="post" action="/schedules/{{ s.id }}/pause" class="inline">{{ csrf_field(csrf) }}<button class="secondary small">一時停止</button></form>{% endif %}
+    {% if s.status not in ('送信済み', '送信中', '結果確認待ち', '取消') %}<form method="post" action="/schedules/{{ s.id }}/cancel" class="inline" data-confirm="この予約を取り消します">{{ csrf_field(csrf) }}<button class="secondary small">取消</button></form>{% endif %}
+    {% if s.status in ('一時停止', '保留', '送信前に失敗', '予約済み', '承認待ち') %}
+    <details><summary>{{ '再開・日時変更' if s.status in ('一時停止', '保留', '送信前に失敗') else '日時変更' }}</summary>
+      <form method="post" action="/schedules/{{ s.id }}/{{ 'resume' if s.status in ('一時停止', '保留', '送信前に失敗') else 'reschedule' }}" class="stack">{{ csrf_field(csrf) }}
+        <input type="date" name="date" value="{{ s.date_local }}"><input type="time" name="time" value="{{ s.time_local }}">
+        <select name="tz">{% for k, v in TZ_CHOICES.items() %}<option value="{{ k }}" {{ 'selected' if k == s.input_tz }}>{{ v }}</option>{% endfor %}</select>
+        <select name="fold"><option value="">2 回ある時刻：—</option><option value="0">1 回目（夏時間）</option><option value="1">2 回目（冬時間）</option></select>
+        <button class="small">{{ '再開' if s.status in ('一時停止', '保留', '送信前に失敗') else '変更' }}</button></form></details>{% endif %}
+    <details><summary>複製</summary><form method="post" action="/schedules/{{ s.id }}/duplicate" class="stack">{{ csrf_field(csrf) }}
+      <input type="date" name="date" required><input type="time" name="time" value="10:00"><select name="tz">{% for k, v in TZ_CHOICES.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+      <button class="small">文面を複製して予約（承認は必要）</button></form></details>
+  </td></tr>
+{% else %}<tr><td colspan="6">予約はありません。</td></tr>{% endfor %}
+</tbody></table></div>
+<p class="small muted">保留にした予約は自動では再開しません（返信・停止依頼・遅延・受信確認の失敗などを人が確認してから再開します）。夏時間の切り替えで存在しない時刻は登録できません。</p>
+{% endblock %}

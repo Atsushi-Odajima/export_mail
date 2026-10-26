@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% from "macros.html" import csrf_field %}
+{% block title %}自社情報 - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>自社情報（文面の差し込み・署名）</h1>
+<p class="small">ここに入力した事実だけを文面に使います。未入力の項目はテンプレートで {{ '{{...}}' }} のまま残り、承認・送信が止まります。実績・価格・保証・仕入れ能力は、確認できるものだけを書いてください。</p>
+<form method="post" action="/profile" class="stack two card">{{ csrf_field(csrf) }}
+{% for key, label, hint in fields %}<label class="{{ 'wide' if key in ('intro_en', 'signature_en', 'services_en') }}">{{ label }}{% if hint %}<span class="muted small">（{{ hint }}）</span>{% endif %}
+  {% if key in ('intro_en', 'signature_en', 'services_en') %}<textarea name="{{ key }}" rows="4">{{ prof[key] }}</textarea>{% else %}<input name="{{ key }}" value="{{ prof[key] }}">{% endif %}</label>{% endfor %}
+<button>保存</button></form>
+{% endblock %}

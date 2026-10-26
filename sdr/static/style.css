@@ -60,3 +60,9 @@ a.ext::after { content:" ↗"; font-size:11px; }
 .stack label.check { flex-direction:row; align-items:center; gap:4px; font-size:14px; }
 fieldset label.check { display:inline-flex; margin-right:14px; }
 table.list td.mono { min-width:180px; }
+.msgbox { margin-bottom:8px; }
+.preview { background:#fff; border:1px solid var(--line); border-radius:6px; padding:10px 14px; white-space:pre-wrap; font-family: Georgia, "Times New Roman", serif; }
+.big { font-size:16px; }
+textarea.body { min-height:280px; font-family: Consolas, Menlo, monospace; font-size:13.5px; }
+.mode-停止 { background:#fdf0d6; } .mode-テスト { background:#e2ecfa; } .mode-実送信 { background:#fde3e1; }
+.s-予約済み { background:#e2ecfa; } .s-送信済み { background:#e3f4e8; } .s-保留, .s-承認待ち, .s-一時停止 { background:#fdf0d6; } .s-送信前に失敗, .s-結果確認待ち { background:#fde3e1; } .s-取消 { opacity:.6; }

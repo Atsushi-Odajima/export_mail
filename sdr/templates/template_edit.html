@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% from "macros.html" import csrf_field %}
+{% block title %}テンプレートの編集 - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<p class="small"><a href="/templates">← テンプレート</a></p>
+<h1>{{ t.name if t else '新しいテンプレート' }}{% if t %} <span class="muted small">版 {{ t.version }}</span>{% endif %}</h1>
+<form method="post" action="/templates/save" class="stack card">{{ csrf_field(csrf) }}<input type="hidden" name="id" value="{{ t.id if t else '' }}">
+  <label>名前<input name="name" value="{{ t.name if t else '' }}" required></label>
+  <label>段階<select name="step">{% for k, v in STEPS.items() if k != 'single' %}<option value="{{ k }}" {{ 'selected' if t and t.step == k }}>{{ v }}</option>{% endfor %}</select></label>
+  <label>分類<select name="category">{% for c in categories %}<option {{ 'selected' if t and t.category == c }}>{{ c }}</option>{% endfor %}</select></label>
+  <label>件名（英語）<input name="subject" value="{{ t.subject if t else '' }}" required></label>
+  <label>本文（英語）<textarea name="body" class="body">{{ t.body if t else '' }}</textarea></label>
+  <button>保存（新しい版）</button></form>
+<details><summary>差し込み項目</summary><table class="kv small">{% for k, v in var_help.items() %}<tr><th class="mono">{{ '{{' }}{{ k }}{{ '}}' }}</th><td>{{ v }}</td></tr>{% endfor %}</table></details>
+{% if versions %}<details><summary>過去の版（{{ versions|length }}）</summary>{% for v in versions %}<p class="small">版 {{ v.version }}（{{ v.created_at|t(tz) }}）{{ v.subject }}</p>{% endfor %}</details>{% endif %}
+{% endblock %}

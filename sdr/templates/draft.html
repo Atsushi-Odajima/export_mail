@@ -1,0 +1,96 @@
+{% extends "base.html" %}{% from "macros.html" import csrf_field %}
+{% block title %}文面 {{ d.subject }} - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<p class="small"><a href="/deals/{{ d.deal_id }}">← 案件：{{ deal.dealer_name }}：{{ deal.title }}</a></p>
+<h1>{{ STEPS[d.step] }}の文面 <span class="state">{{ d.status }}</span></h1>
+<p class="muted small">文面ID <span class="mono">{{ d.id }}</span> ／ 版 {{ d.version }} ／ 作り方：{{ d.source }}{% if usage %}（AI：{{ usage.model }}・{{ usage.input_tokens + usage.output_tokens }} トークン）{% endif %}
+ ／ {% include "_tz.html" %}</p>
+{% if approval %}<p class="box">この版（{{ approval.draft_version }}）は {{ approval.approved_at|t(tz) }} に {{ approval.approved_by }} が承認済みです。宛先・件名・本文・添付・送信元を変えると承認は自動で取り消されます。</p>
+{% else %}<p class="box warn">未承認です。内容を確認して「この版を承認」を押すまで、送信・予約送信はされません。</p>{% endif %}
+{% if problems %}<p class="box warn">承認前に直す点：{{ problems|join(' ／ ') }}</p>{% endif %}
+{% if dups %}<p class="box warn">送信済みの内容と似ています：{{ dups|join(' ／ ') }}</p>{% endif %}
+{% if approval and preflight %}<p class="box warn">今送ると止まる理由：{{ preflight|join(' ／ ') }}</p>{% endif %}
+
+<div class="grid2">
+<section class="card">
+  <h2>編集</h2>
+  <form method="post" action="/drafts/{{ d.id }}/save" class="stack">{{ csrf_field(csrf) }}
+    <label>送信元<select name="account_id"><option value="">（選択してください）</option>{% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if a.id == d.account_id }}>{{ a.label }}（{{ a.from_address }}・{{ a.provider_label }}）</option>{% endfor %}</select></label>
+    <label>宛先（To）<input name="to_address" value="{{ d.to_address }}"></label>
+    <label>CC（他の宛先に表示されます）<input name="cc" value="{{ d.cc }}"></label>
+    <label>BCC（他の宛先には表示されません）<input name="bcc" value="{{ d.bcc }}"></label>
+    <label>件名（英語）<input name="subject" value="{{ d.subject }}"></label>
+    <label>本文（英語・テキスト）<textarea name="body" class="body">{{ d.body }}</textarea></label>
+    <span class="small muted">{{ '{{...}}' }} や [[...]] が残っている箇所は差し込み未完了として承認・送信を止めます。自社情報が未入力の項目は「自社情報」で入力してください。</span>
+    {% if d.status != '送信済み' %}<button>保存（新しい版になります）</button>{% endif %}
+  </form>
+  <h3>添付</h3>
+  <ul class="small">{% for a in attachments %}<li>{{ a.filename }}（{{ (a.size/1024)|round(1) }} KB）
+    {% if d.status != '送信済み' %}<form method="post" action="/attachments/{{ a.id }}/delete" class="inline">{{ csrf_field(csrf) }}<button class="link">外す</button></form>{% endif %}</li>{% else %}<li class="muted">なし</li>{% endfor %}</ul>
+  {% if d.status != '送信済み' %}<form method="post" action="/drafts/{{ d.id }}/attachments" enctype="multipart/form-data" class="toolbar">{{ csrf_field(csrf) }}<input type="file" name="file"><button class="secondary small">添付する（10MB まで）</button></form>{% endif %}
+</section>
+
+<section class="card">
+  <h2>送信内容の確認（プレビュー）</h2>
+  <table class="kv"><tr><th>送信元</th><td>{% for a in accounts if a.id == d.account_id %}{{ a.from_name or '' }} &lt;{{ a.from_address }}&gt;{% endfor %}</td></tr>
+  <tr><th>宛先</th><td class="mono">{{ d.to_address }}</td></tr><tr><th>CC</th><td class="mono">{{ d.cc }}</td></tr><tr><th>BCC</th><td class="mono">{{ d.bcc }}</td></tr>
+  <tr><th>件名</th><td><b>{{ d.subject }}</b></td></tr><tr><th>添付</th><td>{{ attachments|map(attribute='filename')|join(', ') or 'なし' }}</td></tr></table>
+  <div class="preview">{{ d.body }}</div>
+  {% if d.summary_ja %}<h3>日本語の内容確認（AI による要約・翻訳の正確さは保証しません）</h3><p class="pre">{{ d.summary_ja }}</p>
+  {% else %}<p class="small muted">日本語の内容確認：AI を設定すると作成できます（AI 未設定のため翻訳はしていません）。</p>{% endif %}
+  {% if basis %}<details><summary>文面作成の根拠</summary><div class="quote">{{ basis|tojson(indent=1) }}</div></details>{% endif %}
+
+  {% if d.status != '送信済み' %}
+  <div class="actions">
+    <form method="post" action="/drafts/{{ d.id }}/approve" class="inline">{{ csrf_field(csrf) }}<button>この版を承認</button></form>
+    <form method="post" action="/drafts/{{ d.id }}/duplicate" class="inline">{{ csrf_field(csrf) }}<button class="secondary">複製</button></form>
+    {% if ai_status.enabled and ai_status.has_key %}<form method="post" action="/drafts/{{ d.id }}/summary" class="inline">{{ csrf_field(csrf) }}<button class="secondary">日本語で内容確認（AI）</button></form>{% endif %}
+  </div>
+  <h3>今すぐ送信</h3>
+  <form method="post" action="/drafts/{{ d.id }}/send-now" class="stack" data-confirm="送信します。送信モード・宛先・承認を確認しましたか？">{{ csrf_field(csrf) }}
+    <label class="check"><input type="checkbox" name="confirm" value="1">宛先・件名・本文・送信モードを確認しました</label>
+    <button {{ 'disabled' if not approval }}>送信する</button></form>
+  <h3>日時を指定して予約</h3>
+  <form method="post" action="/drafts/{{ d.id }}/schedule" class="toolbar">{{ csrf_field(csrf) }}
+    <input type="date" name="date" required><input type="time" name="time" value="10:00" required>
+    <select name="tz">{% for k, v in TZ_CHOICES.items() %}<option value="{{ k }}" {{ 'selected' if k == tz }}>{{ v }}</option>{% endfor %}</select>
+    <select name="fold"><option value="">2 回ある時刻：—</option><option value="0">1 回目（夏時間）</option><option value="1">2 回目（冬時間）</option></select>
+    <button class="secondary">予約する</button></form>
+  <p class="small muted">予約は承認済みの版を送ります。承認前なら「承認待ち」で登録され、承認すると「予約済み」になります。</p>
+  {% else %}<p class="box">送信済みです。変更する場合は「複製」して新しい下書きにしてください。<form method="post" action="/drafts/{{ d.id }}/duplicate" class="inline">{{ csrf_field(csrf) }}<button class="secondary small">複製</button></form></p>{% endif %}
+</section>
+</div>
+
+{% if d.status != '送信済み' %}
+<section class="card">
+  <h2>AI で作成・手動連携</h2>
+  <div class="grid2">
+  <div>
+    <h3>AI で作り直す</h3>
+    {% if ai_status.enabled and ai_status.has_key %}
+    <form method="post" action="/drafts/{{ d.id }}/ai" class="stack">{{ csrf_field(csrf) }}<label>指示（日本語）<input name="instruction"></label><button class="secondary">AI で作り直す（承認は取り消されます）</button></form>
+    <p class="small muted">今月の利用：{{ ai_status.usage.requests }} 回 / {{ "{:,}".format(ai_status.usage.tokens) }} トークン（上限 {{ ai_status.request_cap }} 回 / {{ "{:,}".format(ai_status.token_cap) }}）</p>
+    {% else %}<p class="small">AI は未設定です（<a href="/settings/mail">メール・AI設定</a>）。右の「手動連携」で、お使いの AI に指示文を貼り付けて結果を戻せます。</p>{% endif %}
+  </div>
+  <div>
+    <h3>手動連携（AI サービスの画面を使う）</h3>
+    <details><summary>AI へ渡す指示文（調査情報と過去の会話を含む）を表示</summary><textarea rows="12" readonly class="body">{{ ai_prompt }}</textarea></details>
+    <form method="post" action="/drafts/{{ d.id }}/paste" class="stack">{{ csrf_field(csrf) }}
+      <label>AI の結果を貼り付け（JSON か「Subject: 件名」で始まる文）<textarea name="text" rows="6"></textarea></label><button class="secondary">貼り付けた結果を下書きにする</button></form>
+  </div>
+  </div>
+</section>
+{% endif %}
+
+<div class="grid2">
+<section class="card"><h2>予約・送信試行</h2>
+<table class="list small"><tbody>{% for s in schedules %}<tr><td>予約</td><td>{{ s.send_at_utc|t(tz) }}</td><td><span class="state s-{{ s.status }}">{{ s.status }}</span> {{ s.hold_reason or '' }}</td></tr>{% endfor %}
+{% for a in attempts %}<tr><td>試行 {{ a.id }}</td><td>{{ a.started_at|t(tz) }}</td><td>{{ a.result }}{% if a.test_mode %} <span class="tag">テスト</span>{% endif %} {{ a.error or '' }}<br><span class="mono muted">{{ a.actual_recipients }}</span></td></tr>{% endfor %}
+{% if not schedules and not attempts %}<tr><td class="muted">まだありません</td></tr>{% endif %}</tbody></table>
+<p class="small muted">「受付済み」は送信サービスが受け付けたことを示し、相手への配達・開封ではありません。</p></section>
+<section class="card"><h2>版と承認の履歴</h2>
+<details><summary>版（{{ versions|length }}）</summary><table class="list small"><tbody>{% for v in versions %}<tr><td>版 {{ v.version }}</td><td>{{ v.created_at|t(tz) }} {{ v.created_by or '' }}・{{ v.source }}</td><td>{{ v.subject }}</td></tr>{% endfor %}</tbody></table></details>
+<details><summary>承認（{{ approvals|length }}）</summary><table class="list small"><tbody>{% for a in approvals %}<tr><td>版 {{ a.draft_version }}</td><td>{{ a.approved_at|t(tz) }} {{ a.approved_by }}</td><td>{% if a.revoked_at %}取消：{{ a.revoked_reason }}{% else %}有効{% endif %}</td></tr>{% endfor %}</tbody></table></details>
+</section>
+</div>
+{% endblock %}

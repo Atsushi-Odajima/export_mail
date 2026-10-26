@@ -7,7 +7,6 @@
 """
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from urllib.parse import quote_plus
 
@@ -188,17 +187,5 @@ def manual_search_links(category: str, region: str) -> list[tuple[str, str]]:
     ]
 
 
-def load_secrets(path) -> dict:
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-
-
-def save_secrets(path, values: dict) -> None:
-    import os
-    path.write_text(json.dumps(values), encoding="utf-8")
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
+# 資格情報保管（sdr/secretstore.py）での名前。旧版の secrets.json と同じ名前なので、そのまま読み取れる
+FIRECRAWL_KEY = "firecrawl_api_key"

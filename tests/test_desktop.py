@@ -66,6 +66,22 @@ def test_research_running(paths):
     assert desktop.research_running(paths) is True
 
 
+def test_scheduled_pending(paths):
+    from sdr.db import connect, migrate
+
+    migrate(paths.db, paths.backups)
+    assert desktop.scheduled_pending(paths) is False
+    conn = connect(paths.db)
+    try:
+        conn.execute("PRAGMA foreign_keys=OFF")  # 確認したいのは件数の判定だけ
+        conn.execute("INSERT INTO schedules(id, deal_id, dealer_id, draft_id, account_id, step, send_at_utc, input_tz, status, "
+                     "created_at, updated_at) VALUES('SCH-1','DEA-1','DLR-1','DRF-1','ACC-1','initial','2030-01-01T00:00:00Z',"
+                     "'Asia/Tokyo','予約済み','x','x')")
+    finally:
+        conn.close()
+    assert desktop.scheduled_pending(paths) is True
+
+
 def test_no_existing_instance(paths):
     assert desktop.focus_existing(paths) is False
     (paths.data_dir / main.LOCK_NAME).write_text(json.dumps({"port": 1, "focus_token": "x"}), encoding="utf-8")

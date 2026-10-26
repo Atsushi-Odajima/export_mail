@@ -3,7 +3,7 @@
 画面のサーバーは今までどおり 127.0.0.1 だけで動かし、その画面を Windows 標準の
 Microsoft Edge WebView2 を使ったアプリ専用のウィンドウに表示する。
 - ウィンドウを閉じるとアプリが終了する（実行中の調査は中断され、次回「再開」できる）。
-- 調査の実行中に閉じようとしたときだけ確認を出す。
+- 調査の実行中、または予約済みの送信があるときだけ、閉じる前に確認を出す（終了すると予約は送られない）。
 - 2 回目に起動されたときは新しく起動せず、既存のウィンドウを前面に出す。
 - 販売店サイトなど外部へのリンクは、このウィンドウではなく既定のブラウザーで開く。
 - CSV・バックアップの保存は「名前を付けて保存」で行う。
@@ -27,7 +27,8 @@ from .config import Paths
 
 log = logging.getLogger("sdr.desktop")
 
-QUIT_CONFIRMATION = "調査を実行中です。終了すると調査は中断され、次回起動したときに「再開」できます。終了しますか？"
+QUIT_CONFIRMATION = ("調査の実行中、または予約済みの送信があります。終了すると、調査は中断され（次回「再開」できます）、"
+                     "予約はアプリを起動するまで送られません（予定時刻を過ぎた予約は保留になります）。終了しますか？")
 LOCALIZATION = {
     "global.quitConfirmation": QUIT_CONFIRMATION,
     "global.ok": "OK",
@@ -67,6 +68,21 @@ def research_running(paths: Paths) -> bool:
         conn = connect(paths.db)
         try:
             n = conn.execute("SELECT COUNT(*) FROM jobs WHERE status IN ('実行中', '停止要求')").fetchone()[0]
+        finally:
+            conn.close()
+        return n > 0
+    except Exception:
+        return False
+
+
+def scheduled_pending(paths: Paths) -> bool:
+    """予約済み（承認済みで送信待ち）の予約があるか。アプリを閉じると予約処理も止まるため確認に使う。"""
+    from .db import connect
+
+    try:
+        conn = connect(paths.db)
+        try:
+            n = conn.execute("SELECT COUNT(*) FROM schedules WHERE status='予約済み'").fetchone()[0]
         finally:
             conn.close()
         return n > 0
@@ -122,6 +138,7 @@ def run_desktop(paths: Paths, port_start: int = 8765) -> None:
 
     server, app, url = build_server(paths, "127.0.0.1", port, "local", allowed, secure_cookies=False,
                                     on_shutdown=on_shutdown)
+    app.state.port = port
     thread = threading.Thread(target=serve, args=(paths, server, app, "local", port, {"focus_token": focus_token}),
                               name="server", daemon=True)
     thread.start()
@@ -159,12 +176,12 @@ def run_desktop(paths: Paths, port_start: int = 8765) -> None:
 
     stop = threading.Event()
 
-    def watch_research():  # 調査の実行中だけ、閉じるときに確認を出す
+    def watch_busy():  # 調査の実行中・予約済みの送信があるときだけ、閉じるときに確認を出す
         while not stop.is_set():
-            window.confirm_close = research_running(paths)
+            window.confirm_close = research_running(paths) or scheduled_pending(paths)
             stop.wait(2)
 
-    threading.Thread(target=watch_research, name="close-guard", daemon=True).start()
+    threading.Thread(target=watch_busy, name="close-guard", daemon=True).start()
 
     smoke = os.environ.get("SDR_DESKTOP_SMOKE")
     if smoke:  # 配布物の起動確認（CI）：表示を確かめて結果を書き、指定秒数後に閉じる
@@ -173,8 +190,8 @@ def run_desktop(paths: Paths, port_start: int = 8765) -> None:
             result = {"renderer": "edgechromium", "url": url}
             try:
                 result["title"] = window.evaluate_js("document.title")
-                result["has_list"] = bool(window.evaluate_js("document.body.innerText.indexOf('販売店一覧') >= 0"))
-                result["rows"] = window.evaluate_js("document.querySelectorAll('table tbody tr').length")
+                result["has_list"] = bool(window.evaluate_js("document.body.innerText.indexOf('ダッシュボード') >= 0"))
+                result["rows"] = window.evaluate_js("parseInt((document.getElementById('stat-dealers') || {}).textContent || '0', 10)")
             except Exception as exc:
                 result["error"] = repr(exc)
             time.sleep(float(os.environ.get("SDR_DESKTOP_SMOKE_HOLD", "0")))

@@ -1,0 +1,1 @@
+<span class="small">表示：{% for k, v in TZ_CHOICES.items() %}<a href="?tz={{ k }}" class="{{ 'current' if tz == k }}">{{ v }}</a>{% if not loop.last %} ／ {% endif %}{% endfor %}（内部は UTC で保存）</span>

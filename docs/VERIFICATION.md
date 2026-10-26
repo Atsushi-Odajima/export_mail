@@ -1,4 +1,4 @@
-# 検証結果と残る制限（2026-10-24）
+# 検証結果と残る制限（2026-10-24、営業メール機能は 2026-10-26）
 
 区分の意味：**実装済み**＝コードがある／**実機確認済み**＝実在サイト・実際の画面・実行ファイルで動かして確認／**試験で確認**＝自動試験（`python -m pytest tests`、架空データ）で確認／**未検証**＝動かして確認していない。
 
@@ -48,7 +48,7 @@
 | Overpass の主インスタンス `overpass-api.de` | この環境の回線から接続できない（英国向けインスタンスで実機確認済み） |
 | 共有モードを HTTPS 経路（Cloudflare Tunnel 等）越しに 2 人で使う運用 | 外部公開・サービス契約を行わないため。認証・CSRF・Cookie 属性は試験で確認 |
 | 利用者の家庭・会社回線での取得結果 | 本環境（クラウドの回線）で 403 になったサイトが、利用者の回線では取得できる可能性がある（回避はしない） |
-| 将来のメール機能（作成・送信・予約・返信管理）と外部メールサービス・外部AI | 今回は実装していない（FUTURE_EMAIL_PLAN.md） |
+| 営業メール機能と外部メールサービス（Gmail・Outlook・SMTP/IMAP）・外部 AI（Claude API）の実通信 | 版 1.1.0 で実装。利用者のアカウント・キーがないため実通信は未検証（第 7 節、IMPLEMENTATION_STATUS.md） |
 
 ## 4. Windows 配布版
 
@@ -147,3 +147,48 @@ GitHub の Windows 実機ランナー（windows-latest）で、インストー�
 - 調査は「1 回 1 ページ」に分けて進めるため、アプリを閉じている間は 1 分ごとの定期実行でゆっくり進みます。
 - Cloudflare の通信元から 403・チャレンジ画面を返すサイトは、PC 版と同様に回避せず「取得失敗」として理由を残します（通信元が異なるため、PC 版と結果が異なるサイトがありえます）。
 - 一覧は全件を読み込んで絞り込むため、販売店が数千件規模になると D1 の読み取り量が増えます（無料枠 1 日 500 万行）。
+
+---
+
+## 7. 営業メール機能（1.1.0、2026-10-26）
+
+開発中の送信試験は、外部へ送らない**テスト用接続先**と架空の `.example` アドレスだけで行いました。調査した販売店へのメール送信は一切行っていません。
+
+### 自動試験（Linux：135 件成功・1 件スキップ）
+
+| 仕様の検証項目 | 試験 |
+|---|---|
+| 一連の流れ：調査データ → 英文作成（テンプレート）→ 承認 → 予約 → 送信記録 → 疑似返信 → 残りの予約が止まる | `test_full_flow_research_to_reply_stops_followups` |
+| 承認後に宛先・本文を変えると古い承認では送れない、再生成で承認待ちに戻る | `test_edit_after_approval_revokes_and_blocks_send`、`test_template_placeholders_block_approval_until_profile_filled`、`test_regenerated_body_returns_schedule_to_approval`、`test_approval_needed_before_schedule_runs` |
+| 連絡拒否（確定・確認待ち）・会社単位の停止で送らない | `test_suppressions_block`、`test_pause_resume_cancel_company_stop` |
+| 送信モード「停止」では送らない、実送信は案件の「送信可」と根拠が必要 | `test_send_mode_stop_blocks`、`test_live_mode_requires_human_send_permission` |
+| 同じ予約を 6 スレッドで同時に実行しても 1 通だけ | `test_concurrent_schedule_execution_sends_once` |
+| 送信前の失敗と結果不明の区別、結果不明は再送しない・照合・人の判断 | `test_rejected_and_unknown_are_distinguished` |
+| 起動時の復旧（送信中のまま止まった試行は結果不明へ） | `test_crash_while_sending_becomes_unknown` |
+| 予約後の返信・配信停止・拒否・不達・自動応答の扱い | `test_reply_stops_followups`、`test_reply_after_schedule_blocks_even_if_not_cancelled`、`test_unsubscribe_reply`、`test_ambiguous_refusal_is_held_for_review`、`test_bounce_marks_invalid_address_not_company`、`test_auto_reply_does_not_stop_followups` |
+| 同期の失敗・古さで予約送信と追客を保留（手動の今すぐ送信は人の判断で可） | `test_followup_held_when_sync_fails`、`test_initial_schedule_held_when_sync_failing` |
+| 遅延した予約は送らずに保留、夏時間の存在しない・2 回ある時刻 | `test_late_schedule_is_held_not_sent`、`test_timezones_and_dst` |
+| DB のコピー・巻き戻し・復元の後は照合と送信担当の確認まで送らない | `test_db_copied_to_other_folder_does_not_send`、`test_db_rollback_detected`、`test_restore_requires_reconcile_then_ownership`、`test_instance_is_stable_across_restarts` |
+| 受信の重複・順序逆転・同じ会社の別アドレス・同じドメインの新規・関係のないメールは保存しない | `test_duplicate_and_out_of_order_and_other_sender`、`test_unrelated_mail_is_not_stored` |
+| テストモードで実アカウントを使うと検証用の宛先へ置き換え、BCC はヘッダーに出さない | `test_test_mode_with_real_account_redirects_to_verification_address`、`test_bcc_not_visible_in_headers` |
+| Gmail API・Graph・SMTP・IMAP・OAuth の要求と応答の扱い（公式仕様どおりの模擬応答） | `tests/test_connectors.py` |
+| Claude API：構造化出力・上限・利用量の記録・429 や断りの記録、画面経由でも失敗の記録が残る | `test_ai_generate_records_usage_and_respects_caps`、`test_ai_errors_are_recorded`、`test_ai_draft_via_screen_and_failure_is_recorded` |
+| 秘密情報（パスワード・トークン・API キー）が DB・バックアップに入らない | `test_secret_store_file_fallback_not_in_db`、`test_firecrawl_key_goes_to_secret_store_not_db` |
+| バックアップに添付を含め、復元先の外へ書き出す名前を拒否 | `test_backup_includes_attachments_and_rejects_path_tricks` |
+| 画面：全画面の表示、CSRF、担当者は管理者の設定を変えられない、配信停止リンク | `tests/test_web_sales.py` |
+
+### 実機確認（この開発環境で実際に動かした）
+
+| 確認内容 | 結果 |
+|---|---|
+| Chromium での画面操作（自社情報 → テスト用接続先 → 送信モード「テスト」→ 実在の初期データの販売店で案件 → テンプレートの英文 → 承認 → 今すぐ送信 → 疑似返信 → 受信の確認 → ダッシュボード） | 各段階で想定どおりの表示（「送信サービスが受け付けました（相手への配達・開封の確認ではありません）」等）。宛先は架空アドレスで、送信はアプリ内のテスト用受信箱だけ。JavaScript のエラーなし |
+| PyInstaller で作った実行ファイル（Linux 版）で `selfcheck` | 成功（時刻帯データ・AI ライブラリ・メール部品。Linux の試験環境には OS の資格情報保管がないためファイル保管） |
+| 同じ実行ファイルに対して `scripts/e2e_test_mode.py` | 成功（作成 → 承認 → 送信 → 疑似返信 → 受信 → ダッシュボードの集計） |
+
+### 未検証
+
+| 項目 | 理由 |
+|---|---|
+| Gmail API・Microsoft Graph・各社 SMTP/IMAP への実際の接続・送受信・OAuth 認証 | 利用者のアカウントと OAuth クライアント登録がないため |
+| Claude API の実際の呼び出し | API キーがないため（有料） |
+| 利用者の Windows 実機での操作、2 台の PC での共有モード | Windows は GitHub Actions のランナーで確認 |

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}テンプレート - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>テンプレート</h1>
+<p><a href="/templates/new" class="button">新しいテンプレート</a> ／ <a href="/profile">自社情報</a></p>
+<table class="list"><thead><tr><th>段階</th><th>分類</th><th>名前</th><th>件名</th><th>版</th></tr></thead><tbody>
+{% for t in rows %}<tr><td>{{ STEPS[t.step] }}</td><td>{{ t.category }}</td><td><a href="/templates/{{ t.id }}">{{ t.name }}</a></td><td>{{ t.subject }}</td><td>{{ t.version }}</td></tr>{% endfor %}</tbody></table>
+<section class="card"><h2>差し込み項目</h2><table class="kv small">{% for k, v in var_help.items() %}<tr><th class="mono">{{ '{{' }}{{ k }}{{ '}}' }}</th><td>{{ v }}</td></tr>{% endfor %}</table>
+<p class="small muted">値が無い項目は置き換えずに残り、承認・送信前に「差し込み未完了」として止まります。初回は分類（一般中古車・スポーツカー・ミニバン・SUV・クラシックカー）に合うテンプレートを自動で選び、無ければ「共通」を使います。</p></section>
+{% endblock %}

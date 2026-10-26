@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% from "macros.html" import csrf_field %}
+{% block title %}送信停止 - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>送信停止（連絡拒否・無効な宛先）</h1>
+<p class="small">範囲ごとに記録します。「確認待ち」も送信を止めます。無効な宛先（不達）と会社全体の拒否は別の範囲です。再調査やデータの再取込では消えません。</p>
+<p class="toolbar small">{% for s in ['', '確認待ち', '確定', '解除'] %}<a href="/suppressions?status={{ s }}" class="{{ 'current' if s == status }}">{{ s or 'すべて' }}</a>{% endfor %}</p>
+<section class="card"><h2>手動で登録</h2>
+<form method="post" action="/suppressions/add" class="toolbar">{{ csrf_field(csrf) }}
+  <select name="scope">{% for s in ['会社', 'アドレス', 'ドメイン', '無効な宛先'] %}<option>{{ s }}</option>{% endfor %}</select>
+  <select name="dealer_id"><option value="">販売店（会社の場合）</option>{% for d in dealers %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select>
+  <input name="address" placeholder="メールアドレス"><input name="domain" placeholder="ドメイン"><input name="reason" placeholder="理由"><button>登録</button></form></section>
+<div class="tablewrap"><table class="list"><thead><tr><th>登録日時</th><th>範囲</th><th>対象</th><th>状態</th><th>理由・経路</th><th>操作</th></tr></thead><tbody>
+{% for s in rows %}<tr><td>{{ s.created_at|t(tz) }}</td><td>{{ s.scope }}</td><td>{{ s.dealer_name or '' }} <span class="mono">{{ s.address or s.domain or '' }}</span></td>
+<td><span class="state">{{ s.status }}</span></td><td class="small">{{ s.reason or '' }}（{{ s.source }}{% if s.message_id %}・<a href="/messages/{{ s.message_id }}">受信</a>{% endif %}）</td>
+<td>{% if s.status == '確認待ち' %}<form method="post" action="/suppressions/{{ s.id }}/confirm" class="inline">{{ csrf_field(csrf) }}<button class="small">確定</button></form>{% endif %}
+{% if s.status != '解除' and is_admin %}<form method="post" action="/suppressions/{{ s.id }}/release" class="inline" data-confirm="送信停止を解除します。相手の意思を確認しましたか？">{{ csrf_field(csrf) }}<button class="secondary small">解除（管理者）</button></form>{% endif %}</td></tr>
+{% else %}<tr><td colspan="6">ありません。</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}

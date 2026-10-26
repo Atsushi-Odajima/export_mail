@@ -1,0 +1,59 @@
+{% extends "base.html" %}{% from "macros.html" import csrf_field %}
+{% block title %}メール・AI設定 - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>メール・AI 設定</h1>
+<p class="small muted">パスワード・更新トークン・API キーの保存先：{{ secret_backend }}。データベース・バックアップ・CSV・ログには含めません。</p>
+<div class="grid2">
+<section class="card">
+  <h2>送信モード</h2>
+  <p>現在：<b class="state mode-{{ send_mode }}">{{ send_mode }}</b></p>
+  <ul class="small"><li><b>停止</b>（初期状態）：どの方法でも送信しません。</li>
+    <li><b>テスト</b>：テスト用接続先は外部に出さずに記録します。実際のメールアカウントを使う場合は、すべて下の「検証用の宛先」へ送り、件名に [TEST] を付けます（販売店には届きません）。</li>
+    <li><b>実送信</b>：承認済みの文面を本来の宛先へ送ります。案件ごとに「送信可」と根拠を人が記録している必要があります。</li></ul>
+  {% if is_admin %}<form method="post" action="/settings/send-mode" class="stack">{{ csrf_field(csrf) }}
+    <select name="send_mode">{% for m in ['停止', 'テスト', '実送信'] %}<option {{ 'selected' if m == send_mode }}>{{ m }}</option>{% endfor %}</select>
+    <label class="check"><input type="checkbox" name="confirm_live" value="1">（実送信にする場合）英国の規則（PECR・UK GDPR）や相手の意思を利用者が確認し、送る相手と内容に責任を持つことを理解しました</label>
+    <button>変更</button></form>{% else %}<p class="small">変更は管理者だけができます。</p>{% endif %}
+</section>
+<section class="card">
+  <h2>送信・受信の設定</h2>
+  <form method="post" action="/settings/options" class="stack">{{ csrf_field(csrf) }}
+    <label>画面の時刻表示<select name="display_tz">{% for k, v in TZ_CHOICES.items() %}<option value="{{ k }}" {{ 'selected' if opts.display_tz == k }}>{{ v }}</option>{% endfor %}</select></label>
+    <label>検証用の宛先（テストモードで実アカウントを使うとき、すべてここへ送ります）<input name="test_recipient" value="{{ opts.test_recipient }}" placeholder="自分の確認用アドレス"></label>
+    <label>予定時刻からこの分数を過ぎた予約は送らずに保留（遅延扱い）<input name="late_grace_minutes" value="{{ opts.late_grace_minutes }}"></label>
+    <label>受信の定期確認の間隔（分）<input name="sync_interval_minutes" value="{{ opts.sync_interval_minutes }}"></label>
+    <label>追客の送信前に必要な受信確認の新しさ（分。古ければ保留）<input name="sync_fresh_minutes" value="{{ opts.sync_fresh_minutes }}"></label>
+    <label>配信停止リンク用の公開アドレス（https://…。外部から開けるときだけ。空欄なら「返信で停止」を案内）<input name="public_base_url" value="{{ opts.public_base_url }}"></label>
+    {% if is_admin %}<button>保存</button>{% endif %}</form>
+</section>
+</div>
+
+<section class="card">
+  <h2>メール接続（送信元アカウント）</h2>
+  <table class="list small"><thead><tr><th>名前</th><th>方式</th><th>送信元</th><th>状態</th><th>認証情報</th><th>受信の確認</th><th>1日の上限</th></tr></thead><tbody>
+  {% for a in accounts %}<tr><td><a href="/accounts/{{ a.id }}">{{ a.label }}</a>{% if not a.enabled %} <span class="tag warn">無効</span>{% endif %}</td><td>{{ a.provider_label }}</td><td class="mono">{{ a.from_address }}</td>
+  <td>{{ a.status }}</td><td>{% if a.provider == 'smtp_imap' %}{{ 'パスワード保存済み' if a.has_password else '未保存' }}{% elif a.provider in ('gmail', 'graph') %}{{ '認証済み' if a.has_token else '未認証' }}{% else %}不要{% endif %}</td>
+  <td>{{ a.last_sync_ok_at|t(tz) }}{% if a.sync_error %}<br><span class="warntext">{{ a.sync_error[:100] }}</span>{% endif %}</td><td>{{ a.daily_limit }}</td></tr>
+  {% else %}<tr><td colspan="7">まだありません。</td></tr>{% endfor %}</tbody></table>
+  {% if is_admin %}<p class="toolbar">追加：{% for k, v in PROVIDERS.items() %}<a href="/accounts/new?provider={{ k }}" class="button secondary">{{ v }}</a>{% endfor %}</p>{% endif %}
+  <p class="small muted">Outlook.com はパスワードによる IMAP 接続が 2024-09-16 に廃止されたため「Microsoft Graph」を使ってください。Gmail は「Gmail API」か、アプリパスワードで「SMTP＋IMAP」が使えます。</p>
+</section>
+
+<section class="card">
+  <h2>AI（Anthropic Claude API・任意）</h2>
+  <p class="small">状態：{{ '有効' if ai_status.enabled else '無効' }}・API キー {{ '保存済み' if ai_status.has_key else '未設定' }} ／ 今月の利用 {{ ai_status.usage.requests }} 回・{{ "{:,}".format(ai_status.usage.tokens) }} トークン（失敗 {{ ai_status.usage.failed }} 回）</p>
+  <p class="small muted">料金は従量課金です（無料枠はありません。新規登録時に少額の試用クレジットがある場合があります）。金額はアプリでは計算せず、利用量だけを表示します。上限に達すると呼び出しません。</p>
+  {% if is_admin %}<form method="post" action="/settings/ai" class="stack two">{{ csrf_field(csrf) }}
+    <label class="check"><input type="checkbox" name="ai_enabled" value="1" {{ 'checked' if opts.ai_enabled == '1' }}>AI による文面作成を使う</label>
+    <label>API キー（保存済みなら空欄のまま）<input name="api_key" type="password" autocomplete="off" placeholder="sk-ant-..."></label>
+    <label>モデル<select name="ai_model">{% for k, v in AI_MODELS.items() %}<option value="{{ k }}" {{ 'selected' if opts.ai_model == k }}>{{ v }}</option>{% endfor %}</select></label>
+    <label>考える深さ（effort）<select name="ai_effort">{% for e in ['low', 'medium', 'high'] %}<option {{ 'selected' if opts.ai_effort == e }}>{{ e }}</option>{% endfor %}</select></label>
+    <label class="check"><input type="checkbox" name="ai_fallbacks" value="1" {{ 'checked' if opts.ai_fallbacks == '1' }}>生成を断られた場合に別モデルで再実行する（Claude API の fallbacks 機能）</label>
+    <label>月間の回数上限<input name="ai_monthly_request_cap" value="{{ opts.ai_monthly_request_cap }}"></label>
+    <label>月間のトークン上限<input name="ai_monthly_token_cap" value="{{ opts.ai_monthly_token_cap }}"></label>
+    <label class="check"><input type="checkbox" name="clear_key" value="1">保存した API キーを削除する</label>
+    <button>保存</button></form>
+  <form method="post" action="/settings/ai-test" class="inline">{{ csrf_field(csrf) }}<button class="secondary small">接続を確認（1 回分の利用量になります）</button></form>{% endif %}
+</section>
+<p><a href="/testbox">テスト用受信箱</a> ／ <a href="/reconcile">照合・送信担当</a> ／ {% if is_admin %}<a href="/users">利用者</a> ／ {% endif %}<a href="/audit">操作履歴</a></p>
+{% endblock %}

@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "macros.html" import cats, csrf_field, extlink %}
 {% block title %}{{ d.name or d.website_host }} - {{ APP_NAME }}{% endblock %}
 {% block content %}
-<p class="small"><a href="/">← 一覧へ戻る</a></p>
+<p class="small"><a href="/dealers">← 一覧へ戻る</a></p>
 <h1>{{ d.name or d.website_host }}</h1>
 <p class="muted small">販売店ID <span class="mono">{{ d.id }}</span>（変更されません）／ データ区分：{{ d.data_origin }} ／ 登録 {{ d.created_at[:10] }}</p>
 
@@ -80,6 +80,33 @@
   </form></details>
 </section>
 </div>
+
+<section class="card">
+  <h2>営業</h2>
+  {% if stops %}<p class="box warn">送信停止中：{{ stops|join('、') }}（<a href="/suppressions">送信停止の一覧</a>）</p>{% endif %}
+  <div class="grid2">
+  <div>
+    <h3>営業案件</h3>
+    <ul>{% for x in deals %}<li><a href="/deals/{{ x.id }}">{{ x.title }}</a> <span class="state">{{ x.stage }}</span> {% if x.pending %}<span class="tag warn">未対応 {{ x.pending }}</span>{% endif %}</li>{% else %}<li class="muted">まだありません</li>{% endfor %}</ul>
+    <form method="post" action="/deals/new" class="toolbar">{{ csrf_field(csrf) }}<input type="hidden" name="dealer_id" value="{{ d.id }}">
+      <input name="title" placeholder="案件名（例：初回営業 2026秋）" size="28">
+      <select name="person_id"><option value="">担当者：不明</option>{% for p in people %}<option value="{{ p.id }}">{{ p.name or p.email }}</option>{% endfor %}</select>
+      <button>営業案件を作る</button></form>
+    <p class="small muted">送受信の履歴：{{ dmsgs|length }} 件（各案件の画面で確認できます）</p>
+    <form method="post" action="/dealers/{{ d.id }}/stop" class="inline" data-confirm="この会社へのすべての送信を停止し、予約を保留にします。よろしいですか？">{{ csrf_field(csrf) }}
+      <input name="reason" placeholder="理由（任意）" size="20"><button class="danger small">この会社への送信をすべて停止</button></form>
+  </div>
+  <div>
+    <h3>担当者（確認できた場合のみ）</h3>
+    <ul class="small">{% for p in people %}<li>{{ p.name or '（氏名不明）' }} {{ p.role or '' }} <span class="mono">{{ p.email or '' }}</span> {% if p.source_url %}{{ extlink(p.source_url, '出典') }}{% endif %}</li>{% else %}<li class="muted">未登録（担当者が不明でも案件は作れます）</li>{% endfor %}</ul>
+    <details><summary>担当者を追加</summary>
+    <form method="post" action="/dealers/{{ d.id }}/people" class="stack">{{ csrf_field(csrf) }}
+      <label>氏名<input name="name"></label><label>役職<input name="role"></label><label>メール<input name="email"></label>
+      <label>電話<input name="phone"></label><label>確認したページのURL<input name="source_url"></label><label>メモ<input name="notes"></label>
+      <button>追加</button></form></details>
+  </div>
+  </div>
+</section>
 
 <section class="card">
   <h2>手動編集</h2>

@@ -1,0 +1,48 @@
+{% extends "base.html" %}{% from "macros.html" import csrf_field %}
+{% block title %}ダッシュボード - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>ダッシュボード</h1>
+{% include "_tz.html" %}
+{% if reconcile %}<p class="box warn"><b>送信を止めています（照合待ち）。</b>復元・コピー等の後のため、<a href="/reconcile">照合</a>で外部の送信履歴を確認してから再開してください。</p>{% endif %}
+<div class="box {{ 'warn' if send_mode != '実送信' }}">
+  送信モード：<b>{{ send_mode }}</b>
+  {% if send_mode == '停止' %}（メールは送られません。初期状態です）{% elif send_mode == 'テスト' %}（テスト用接続先、または検証用の宛先にだけ送ります）{% else %}（承認済みの文面を実際の宛先へ送ります）{% endif %}
+  ／ 予約処理：{% if sched.alive %}<span class="ok">稼働中</span>{% else %}<span class="warntext">停止中</span>{% endif %}
+  （最終確認 {{ sched.heartbeat|t(tz) }}）{% if not sched.env_ok %}<br><span class="warntext">{{ sched.env_reason }}</span>{% endif %}
+  <br><span class="small muted">予約送信と返信の確認は、このアプリ（サーバー）が起動している間だけ動きます。PC の停止・スリープ中は動かず、遅れた予約は自動で送らずに保留になります。</span>
+</div>
+<div class="stats">
+  <div><b id="stat-dealers">{{ st.dealers }}</b><span><a href="/dealers">販売店</a></span></div>
+  <div><b>{{ st.unreviewed }}</b><span>人の確認が未完了</span></div>
+  <div><b>{{ st.deals }}</b><span><a href="/deals">進行中の案件</a></span></div>
+  <div><b>{{ st.drafts }}</b><span><a href="/drafts?status=下書き">下書き</a></span></div>
+  <div><b>{{ st.approval_wait }}</b><span><a href="/schedules?status=承認待ち">承認待ちの予約</a></span></div>
+  <div><b>{{ st.scheduled }}</b><span><a href="/schedules?status=予約済み">予約済み</a></span></div>
+  <div><b>{{ st.held }}</b><span><a href="/schedules?status=保留">保留・失敗・結果確認待ち</a></span></div>
+  <div><b id="stat-sent7">{{ st.sent_7d }}</b><span>7日間の送信（受付）</span></div>
+  <div><b>{{ st.unknown }}</b><span><a href="/reconcile">送信結果不明</a></span></div>
+  <div><b id="stat-replies">{{ st.new_replies }}</b><span><a href="/inbox?kind=返信">新着返信</a></span></div>
+  <div><b>{{ st.pending }}</b><span><a href="/inbox">対応待ち</a></span></div>
+  <div><b>{{ st.suppress_wait }}</b><span><a href="/suppressions?status=確認待ち">停止範囲の確認待ち</a></span></div>
+</div>
+<p class="small muted">「送信（受付）」は送信サービスが受け付けた数です。相手への配達・開封は確認していません。</p>
+<div class="grid2">
+<section class="card">
+  <h2>メール接続の状態</h2>
+  <table class="list small"><thead><tr><th>アカウント</th><th>方式</th><th>状態</th><th>受信の確認</th></tr></thead><tbody>
+  {% for a in accounts %}<tr><td>{{ a.label }}<br><span class="mono">{{ a.from_address }}</span>{% if not a.enabled %} <span class="tag warn">無効</span>{% endif %}</td><td>{{ a.provider_label }}</td>
+    <td>{{ a.status }}{% if a.status_detail %}<br><span class="muted">{{ a.status_detail[:120] }}</span>{% endif %}</td>
+    <td>{{ a.last_sync_ok_at|t(tz) }}{% if a.sync_error %}<br><span class="warntext">{{ a.sync_error[:120] }}</span>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="4">まだありません。<a href="/settings/mail">メール接続を追加</a>（まずは「テスト用接続先」で動きを確認できます）</td></tr>{% endfor %}
+  </tbody></table>
+  <p class="small">AI：{% if ai_status.enabled and ai_status.has_key %}<span class="ok">利用可</span>（{{ ai_status.model }}・今月 {{ ai_status.usage.requests }} 回／{{ "{:,}".format(ai_status.usage.tokens) }} トークン）{% elif ai_status.has_key %}キー設定済み・無効{% else %}未設定（手動連携・定型文は使えます）{% endif %}</p>
+  <form method="post" action="/scheduler/run" class="inline">{{ csrf_field(csrf) }}<input type="hidden" name="next" value="/"><button class="secondary small">今すぐ受信確認・予約処理</button></form>
+</section>
+<section class="card">
+  <h2>次の対応</h2>
+  <ul>{% for d in st.next_actions %}<li>{{ d.next_action_at|t(tz) }} <a href="/deals/{{ d.id }}">{{ d.dealer_name }}：{{ d.title }}</a> {{ d.next_action or '' }}</li>{% else %}<li class="muted">予定はありません</li>{% endfor %}</ul>
+  <h2>最近の送信試行</h2>
+  <table class="list small"><tbody>{% for a in recent %}<tr><td>{{ a.started_at|t(tz) }}</td><td>{{ a.subject or a.draft_id }}</td><td>{{ a.result }}{% if a.test_mode %} <span class="tag">テスト</span>{% endif %}</td></tr>{% else %}<tr><td class="muted">まだありません</td></tr>{% endfor %}</tbody></table>
+</section>
+</div>
+{% endblock %}

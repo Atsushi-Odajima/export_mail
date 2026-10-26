@@ -5,12 +5,17 @@
 #   SamuraiDealerResearch-cli.exe  コマンド用（共有モード・バックアップ等。黒いウィンドウでメッセージを表示）
 import sys
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 hiddenimports = collect_submodules("uvicorn") + ["multipart", "python_multipart"]
+# AI（Anthropic 公式 SDK）・資格情報保管（keyring。保管先はエントリーポイントで探すため配布情報も同梱）・時刻帯データ
+hiddenimports += collect_submodules("anthropic") + collect_submodules("httpx2") + collect_submodules("keyring.backends")
+hiddenimports += collect_submodules("tzdata")
+datas_extra = copy_metadata("keyring") + copy_metadata("anthropic") + collect_data_files("tzdata") + collect_data_files("certifi")
 if sys.platform == "win32":
     # 専用ウィンドウ（pywebview の Edge WebView2 表示）。フック（pyinstaller-hooks-contrib）が WebView2 の DLL も同梱する
     hiddenimports += ["webview", "webview.platforms.winforms", "webview.platforms.edgechromium", "clr"]
+    hiddenimports += collect_submodules("win32ctypes")  # Windows 資格情報マネージャー
 
 a = Analysis(
     ["run_app.py"],
@@ -19,7 +24,7 @@ a = Analysis(
         ("sdr/templates", "sdr/templates"),
         ("sdr/static", "sdr/static"),
         ("sdr/seed", "sdr/seed"),
-    ],
+    ] + datas_extra,
     hiddenimports=hiddenimports,
     excludes=["tkinter", "pytest", "PyInstaller"],
     noarchive=False,

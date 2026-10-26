@@ -226,7 +226,9 @@ class JobManager:
                 if used_now + expected > cap:
                     raise discovery.DiscoveryError(
                         f"今月の Firecrawl 使用上限（{cap:g} クレジット、使用済み {used_now:g}）に達するため実行しません")
-                key = discovery.load_secrets(self.secrets_path).get("firecrawl_api_key", "")
+                from .secretstore import SecretStore
+
+                key = SecretStore(self.secrets_path).get(discovery.FIRECRAWL_KEY) or ""
                 found, used = discovery.discover_firecrawl(key, category, region, limit)
                 repo.record_api_usage(conn, "firecrawl", used, f"{category} {region}")
                 source = "Firecrawl"

@@ -13,7 +13,7 @@
 </section>
 <section class="card">
   <h2>Firecrawl APIキー（任意）</h2>
-  <p class="small">状態：{{ '設定済み' if has_key else '未設定' }}。キーはデータフォルダーの secrets.json にだけ保存し、データベース・バックアップ・CSV・ログには含めません。今月の使用量 {{ used|round(1) }} クレジット。</p>
+  <p class="small">状態：{{ '設定済み' if has_key else '未設定' }}。キーは OS の資格情報保管（Windows 資格情報マネージャー）に保存し、データベース・バックアップ・CSV・ログには含めません。今月の使用量 {{ used|round(1) }} クレジット。</p>
   <form method="post" action="/settings/firecrawl-key" class="stack">{{ csrf_field(csrf) }}
     <input name="api_key" type="password" autocomplete="off" placeholder="fc-...">
     <button>保存</button> <button name="clear" value="1" class="secondary">キーを削除</button>

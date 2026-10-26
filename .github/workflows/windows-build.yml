@@ -27,11 +27,22 @@ jobs:
         run: python -m pytest -q -p no:cacheprovider tests
       - name: 実行ファイルの作成（PyInstaller）
         run: pyinstaller --noconfirm SamuraiDealerResearch.spec
-      - name: 起動確認（ブラウザー版・Python なしで起動し、画面・初期データ・終了・再起動を確認）
+      - name: 部品の確認（Windows 資格情報マネージャー・時刻帯データ・AI ライブラリ・メール部品。外部へは接続しない）
+        shell: pwsh
+        run: |
+          $data = Join-Path $env:RUNNER_TEMP "sdr-selfcheck"
+          $out = & "dist\SamuraiDealerResearch\SamuraiDealerResearch-cli.exe" --data-dir $data selfcheck
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) { throw "部品の確認に失敗しました" }
+          $r = $out | ConvertFrom-Json
+          if (-not $r.secret_store.os_store) { throw "Windows 資格情報マネージャーを使えていません" }
+          if (Test-Path (Join-Path $data "secrets.json")) { throw "資格情報がファイルに保存されました" }
+      - name: 起動確認（ブラウザー版・Python なしで起動し、画面・初期データ・テスト送信の一連・終了・再起動を確認）
         shell: pwsh
         run: |
           $data = Join-Path $env:RUNNER_TEMP "sdr-data"
           $exe = "dist\SamuraiDealerResearch\SamuraiDealerResearch-cli.exe"
+          $py = (Get-Command python).Source
           $env:PATH = "C:\Windows\System32;C:\Windows"   # Python を外した状態で起動
           $p = Start-Process -FilePath $exe -ArgumentList "--data-dir", $data, "local", "--no-browser", "--port", "8799" -PassThru
           $ok = $false
@@ -41,11 +52,14 @@ jobs:
           }
           if (-not $ok) { throw "起動しませんでした" }
           $page = Invoke-WebRequest http://127.0.0.1:8799/ -SessionVariable s
-          if ($page.Content -notmatch "販売店一覧") { throw "一覧画面が表示されません" }
+          if ($page.Content -notmatch "ダッシュボード") { throw "ダッシュボードが表示されません" }
           $csv = Invoke-WebRequest http://127.0.0.1:8799/export/dealers.csv -WebSession $s
           $rows = ([System.Text.Encoding]::UTF8.GetString($csv.RawContentStream.ToArray()) -split "`r`n" | Where-Object { $_ -ne "" }).Count - 1
           Write-Host "初期データ件数: $rows"
           if ($rows -lt 20) { throw "初期データが読み込まれていません" }
+          # テスト用接続先だけを使って 作成 → 承認 → 送信 → 疑似返信 → 受信 を確認（外部へは送らない）
+          & $py scripts\e2e_test_mode.py http://127.0.0.1:8799
+          if ($LASTEXITCODE -ne 0) { throw "テスト送信の一連の操作に失敗しました" }
           $token = [regex]::Match($page.Content, 'name="csrf_token" value="([^"]+)"').Groups[1].Value
           Invoke-WebRequest http://127.0.0.1:8799/shutdown -Method Post -Body @{ csrf_token = $token } -WebSession $s | Out-Null
           if (-not $p.WaitForExit(20000)) { throw "終了操作後もプロセスが残っています" }
@@ -107,7 +121,7 @@ jobs:
           $r = Get-Content "$out\smoke1.json" -Raw -Encoding utf8 | ConvertFrom-Json
           Write-Host ("表示確認: " + ($r | ConvertTo-Json -Compress))
           if ($r.renderer -ne "edgechromium") { throw "Edge WebView2 で表示されていません" }
-          if (-not $r.has_list) { throw "一覧画面が表示されていません" }
+          if (-not $r.has_list) { throw "ダッシュボードが表示されていません" }
           if ($r.rows -lt 20) { throw "初期データが表示されていません" }
           if ($r.focus_count -lt 1) { throw "2 回目の起動で既存のウィンドウを前面に出していません" }
           if (Test-Path $lock) { throw "終了後も起動中の印が残っています" }
@@ -140,7 +154,7 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          Copy-Item README.md, FUTURE_EMAIL_PLAN.md, LICENSES.md dist\SamuraiDealerResearch\
+          Copy-Item README.md, FUTURE_EMAIL_PLAN.md, LICENSES.md, IMPLEMENTATION_STATUS.md dist\SamuraiDealerResearch\
           Compress-Archive -Path dist\SamuraiDealerResearch -DestinationPath SamuraiDealerResearch-windows.zip
       - uses: actions/upload-artifact@v4
         with:

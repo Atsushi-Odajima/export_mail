@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% from "macros.html" import csrf_field %}
+{% block title %}テスト用受信箱 - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>テスト用受信箱（外部へは送りません）</h1>
+<p class="small">テスト用接続先で「送信」したメールと、疑似的に作った受信です。送信したメールを選んで、返信・自動応答・不達・配信停止などを作り、「受信を確認」で取り込まれる様子と予約の停止を確かめられます。</p>
+{% if not accounts %}<p class="box warn">テスト用接続先がありません。<a href="/accounts/new?provider=test">追加する</a></p>{% endif %}
+<form method="post" action="/sync/now" class="inline">{{ csrf_field(csrf) }}<input type="hidden" name="next" value="/testbox"><button>受信を確認（取り込み）</button></form>
+<table class="list small"><thead><tr><th>#</th><th>箱</th><th>日時</th><th>From → To</th><th>件名</th><th>疑似受信を作る</th></tr></thead><tbody>
+{% for r in rows %}<tr><td>{{ r.id }}</td><td>{{ '送信' if r.folder == 'sent' else '受信' }}</td><td>{{ r.created_at|t(tz) }}</td><td class="mono">{{ r['from'] }} → {{ r.to }}</td><td>{{ r.subject }}</td>
+<td>{% if r.folder == 'sent' %}<form method="post" action="/testbox/inject" class="toolbar">{{ csrf_field(csrf) }}<input type="hidden" name="sent_id" value="{{ r.id }}">
+  <select name="kind">{% for k, v in INJECT_KINDS.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select><button class="small">作る</button></form>{% endif %}</td></tr>
+{% else %}<tr><td colspan="6">まだありません。</td></tr>{% endfor %}</tbody></table>
+{% endblock %}

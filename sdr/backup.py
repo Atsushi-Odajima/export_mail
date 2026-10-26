@@ -3,11 +3,13 @@
 バックアップ ZIP の中身
 - dealers.sqlite3 … 取得キャッシュとログインセッションを除いた DB
 - manifest.json   … アプリ版・DB の版・作成日時・件数
-APIキー（secrets.json）は含めない。
+- attachments/    … 文面に付けた添付ファイル
+パスワード・トークン・APIキー（OS の資格情報保管や secrets.json）は含めない。
 """
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sqlite3
 import tempfile
@@ -20,6 +22,8 @@ from .db import connect, current_version, latest_version, utcnow
 
 MANIFEST = "manifest.json"
 DBNAME = "dealers.sqlite3"
+ATTACH_DIR = "attachments"
+ATTACH_RE = re.compile(r"^attachments/[A-Za-z0-9_-]{1,64}$")
 
 
 class BackupError(RuntimeError):
@@ -50,8 +54,14 @@ def create_backup(db_path: Path, dest_dir: Path, label: str = "manual") -> Path:
         manifest = {"app": "SamuraiDealerResearch", "app_version": __version__, "schema_version": version,
                     "created_at": utcnow(), "counts": counts,
                     "note": "取得キャッシュ・ログインセッション・APIキーは含みません"}
+        attach = db_path.parent / ATTACH_DIR
+        files = [f for f in sorted(attach.iterdir()) if f.is_file() and ATTACH_RE.match(f"{ATTACH_DIR}/{f.name}")] \
+            if attach.is_dir() else []
+        manifest["attachments"] = len(files)
         with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.write(tmp_db, DBNAME)
+            for f in files:
+                zf.write(f, f"{ATTACH_DIR}/{f.name}")
             zf.writestr(MANIFEST, json.dumps(manifest, ensure_ascii=False, indent=2))
     return out
 
@@ -60,10 +70,10 @@ def inspect_backup(zip_path: Path) -> dict:
     try:
         with zipfile.ZipFile(zip_path) as zf:
             names = set(zf.namelist())
-            if names - {MANIFEST, DBNAME} or DBNAME not in names or MANIFEST not in names:
+            extra = {n for n in names - {MANIFEST, DBNAME} if not ATTACH_RE.match(n)}
+            if extra or DBNAME not in names or MANIFEST not in names:
                 raise BackupError("このアプリのバックアップ形式ではありません")
-            info = zf.getinfo(DBNAME)
-            if info.file_size > 2_000_000_000:
+            if sum(i.file_size for i in zf.infolist()) > 4_000_000_000:
                 raise BackupError("バックアップが大きすぎます")
             manifest = json.loads(zf.read(MANIFEST).decode("utf-8"))
     except zipfile.BadZipFile as exc:
@@ -81,6 +91,7 @@ def restore_backup(zip_path: Path, db_path: Path, backup_dir: Path) -> tuple[dic
     with tempfile.TemporaryDirectory() as tmp:
         with zipfile.ZipFile(zip_path) as zf:
             zf.extract(DBNAME, tmp)
+            attachments = {n.split("/", 1)[1]: zf.read(n) for n in zf.namelist() if ATTACH_RE.match(n)}
         restored = Path(tmp) / DBNAME
         conn = sqlite3.connect(str(restored))
         try:
@@ -101,4 +112,9 @@ def restore_backup(zip_path: Path, db_path: Path, backup_dir: Path) -> tuple[dic
             if p.exists():
                 p.unlink()
         tmp_target.replace(db_path)
+        if attachments:
+            attach = db_path.parent / ATTACH_DIR
+            attach.mkdir(exist_ok=True)
+            for name, data in attachments.items():
+                (attach / name).write_bytes(data)
     return manifest, pre

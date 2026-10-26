@@ -7,7 +7,9 @@ import zipfile
 import pytest
 
 from sdr import backup, csv_io, repo, seed
-from sdr.db import MIGRATIONS, MigrationError, connect, current_version, migrate
+from sdr.db import MIGRATIONS, MigrationError, connect, current_version, latest_version, migrate
+
+LATEST = latest_version()
 from sdr.jobs import JobManager
 from sdr.research import research_site
 from conftest import FakeWeb, dealer_site, make_fetcher
@@ -106,12 +108,12 @@ def test_migration_adds_column_and_keeps_data(paths, conn):
     def v2(c):
         c.execute("ALTER TABLE dealers ADD COLUMN test_extra TEXT")
 
-    log = migrate(paths.db, paths.backups, MIGRATIONS + [(2, "試験用の列追加", v2)])
+    log = migrate(paths.db, paths.backups, MIGRATIONS + [(LATEST + 1, "試験用の列追加", v2)])
     assert any("更新前のバックアップ" in l for l in log)
-    assert list(paths.backups.glob("pre-migration-v1-*.sqlite3"))
+    assert list(paths.backups.glob(f"pre-migration-v{LATEST}-*.sqlite3"))
     c = connect(paths.db)
     try:
-        assert current_version(c) == 2
+        assert current_version(c) == LATEST + 1
         row = c.execute("SELECT name_manual, test_extra FROM dealers WHERE id=?", (did,)).fetchone()
         assert row["name_manual"] == "Keep Me" and row["test_extra"] is None
     finally:
@@ -127,10 +129,10 @@ def test_failed_migration_rolls_back(paths, conn):
         raise RuntimeError("意図的な失敗")
 
     with pytest.raises(MigrationError):
-        migrate(paths.db, paths.backups, MIGRATIONS + [(2, "失敗する移行", bad)])
+        migrate(paths.db, paths.backups, MIGRATIONS + [(LATEST + 1, "失敗する移行", bad)])
     c = connect(paths.db)
     try:
-        assert current_version(c) == 1
+        assert current_version(c) == LATEST
         cols = [r[1] for r in c.execute("PRAGMA table_info(dealers)")]
         assert "half_done" not in cols
         assert c.execute("SELECT name_manual FROM dealers WHERE id=?", (did,)).fetchone()[0] == "Keep Me"
@@ -164,7 +166,7 @@ def test_backup_and_restore_keep_ids_manual_evidence_history(paths, conn):
     conn.execute("UPDATE dealers SET summary_manual='壊れた値'")
     conn.close()
     manifest, pre = backup.restore_backup(zp, paths.db, paths.backups)
-    assert pre.exists() and manifest["schema_version"] == 1
+    assert pre.exists() and manifest["schema_version"] == LATEST
     c = connect(paths.db)
     try:
         after = repo.get_dealer(c, did)
@@ -183,6 +185,27 @@ def test_restore_rejects_foreign_zip(tmp_path, paths):
         zf.writestr("evil.txt", "x")
     with pytest.raises(backup.BackupError):
         backup.restore_backup(bad, paths.db, paths.backups)
+
+
+def test_backup_includes_attachments_and_rejects_path_tricks(tmp_path, paths, conn):
+    attach = paths.data_dir / "attachments"
+    attach.mkdir()
+    (attach / "ATT-01TEST").write_bytes(b"%PDF-1.4 brochure")
+    zp = backup.create_backup(paths.db, paths.backups)
+    with zipfile.ZipFile(zp) as zf:
+        assert "attachments/ATT-01TEST" in zf.namelist()
+    (attach / "ATT-01TEST").unlink()
+    conn.close()
+    backup.restore_backup(zp, paths.db, paths.backups)
+    assert (attach / "ATT-01TEST").read_bytes() == b"%PDF-1.4 brochure"
+    # 復元先の外へ書き出す名前は受け付けない
+    evil = tmp_path / "evil.zip"
+    with zipfile.ZipFile(zp) as src, zipfile.ZipFile(evil, "w") as zf:
+        for n in src.namelist():
+            zf.writestr(n, src.read(n))
+        zf.writestr("attachments/../../evil", b"x")
+    with pytest.raises(backup.BackupError):
+        backup.restore_backup(evil, paths.db, paths.backups)
 
 
 # --------------------------------------------------------------------------- CSV

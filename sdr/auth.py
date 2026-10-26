@@ -47,16 +47,20 @@ def validate_new_password(password: str) -> str | None:
     return None
 
 
-def create_user(conn, username: str, password: str) -> None:
+def create_user(conn, username: str, password: str, role: str | None = None) -> None:
     username = username.strip()
     if not (2 <= len(username) <= 40) or not username.replace("_", "").replace("-", "").replace(".", "").isalnum():
         raise ValueError("利用者名は英数字・._- の 2〜40 文字にしてください")
     err = validate_new_password(password)
     if err:
         raise ValueError(err)
-    conn.execute("INSERT INTO users(username, password_hash, created_at) VALUES(?,?,?) "
-                 "ON CONFLICT(username) DO UPDATE SET password_hash=excluded.password_hash, disabled=0",
-                 (username, hash_password(password), utcnow()))
+    if role not in (None, "admin", "member"):
+        raise ValueError("権限は admin（管理者）か member（担当者）にしてください")
+    first = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
+    conn.execute("INSERT INTO users(username, password_hash, created_at, role) VALUES(?,?,?,?) "
+                 "ON CONFLICT(username) DO UPDATE SET password_hash=excluded.password_hash, disabled=0, "
+                 "role=COALESCE(?, users.role)",
+                 (username, hash_password(password), utcnow(), role or ("admin" if first else "member"), role))
     # パスワード変更時は既存セッションを無効化
     conn.execute("DELETE FROM sessions WHERE user_id=(SELECT id FROM users WHERE username=?)", (username,))
 
@@ -84,14 +88,14 @@ def login(conn, username: str, password: str) -> tuple[str, str] | None:
 def session_user(conn, token: str | None) -> dict | None:
     if not token:
         return None
-    row = conn.execute("SELECT s.csrf_token, s.expires_at, u.username, u.id FROM sessions s JOIN users u ON u.id=s.user_id "
+    row = conn.execute("SELECT s.csrf_token, s.expires_at, u.username, u.id, u.role FROM sessions s JOIN users u ON u.id=s.user_id "
                        "WHERE s.token_hash=? AND u.disabled=0", (_token_hash(token),)).fetchone()
     if not row:
         return None
     if datetime.fromisoformat(row["expires_at"]) < datetime.now(timezone.utc):
         conn.execute("DELETE FROM sessions WHERE token_hash=?", (_token_hash(token),))
         return None
-    return {"username": row["username"], "id": row["id"], "csrf": row["csrf_token"]}
+    return {"username": row["username"], "id": row["id"], "csrf": row["csrf_token"], "role": row["role"]}
 
 
 def logout(conn, token: str | None) -> None:

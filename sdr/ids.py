@@ -26,3 +26,14 @@ def ulid() -> str:
 
 def new_id(prefix: str) -> str:
     return f"{prefix}-{ulid()}"
+PREFIX_PERSON = "PSN"
+PREFIX_DEAL = "DEA"
+PREFIX_TEMPLATE = "TPL"
+PREFIX_DRAFT = "DRF"
+PREFIX_ATTACHMENT = "ATT"
+PREFIX_ACCOUNT = "ACC"
+PREFIX_THREAD = "THR"
+PREFIX_MESSAGE = "MSG"
+PREFIX_SEQUENCE = "SEQ"
+PREFIX_SCHEDULE = "SCH"
+PREFIX_SUPPRESSION = "SUP"

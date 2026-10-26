@@ -4,7 +4,7 @@
 - 起動時に未適用の移行を順番に適用する。適用前に DB ファイルを backups/ へ複製する。
 - 各移行は 1 トランザクションで実行し、失敗したら巻き戻して起動を中止する
   （データは移行前の状態のまま残る。復旧手順は README「更新に失敗したとき」）。
-- 将来のメール機能のテーブルは、新しい移行関数を MIGRATIONS に追加して作る。
+- 版 2 で営業（担当者・案件・文面・承認・送信アカウント・会話・予約・送信試行・連絡拒否・AI 利用・操作履歴）を追加した。
 """
 from __future__ import annotations
 
@@ -260,11 +260,239 @@ def _split_sql(script: str) -> list[str]:
     return statements
 
 
+SCHEMA_V2 = """
+ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'member';
+
+-- 確認できた担当者（不明でも販売店・案件は登録できる）
+CREATE TABLE people (
+    id TEXT PRIMARY KEY,                    -- PSN-ULID
+    dealer_id TEXT NOT NULL REFERENCES dealers(id),
+    name TEXT, role TEXT, email TEXT, phone TEXT, source_url TEXT, notes TEXT,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_people_dealer ON people(dealer_id);
+
+-- 営業案件（同じ販売店に複数可。調査状態・送信停止とは別の状態）
+CREATE TABLE deals (
+    id TEXT PRIMARY KEY,                    -- DEA-ULID
+    dealer_id TEXT NOT NULL REFERENCES dealers(id),
+    person_id TEXT REFERENCES people(id),
+    title TEXT NOT NULL,
+    owner TEXT,
+    stage TEXT NOT NULL DEFAULT '未着手',
+    next_action_at TEXT, next_action TEXT, notes TEXT,
+    send_allowed INTEGER NOT NULL DEFAULT 0, -- 人が判断した「この案件で営業メールを送ってよいか」
+    send_basis TEXT,                         -- その判断の根拠（例：法人の公開営業窓口、事前の了承）
+    created_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_deals_dealer ON deals(dealer_id);
+
+-- 自社情報（署名・紹介文。未入力の項目は文面で差し込み未完了として検出する）
+CREATE TABLE company_profile (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
+CREATE TABLE templates (
+    id TEXT PRIMARY KEY,                    -- TPL-ULID
+    name TEXT NOT NULL,
+    step TEXT NOT NULL,                     -- initial / followup1 / followup2 / reactivation / reply
+    category TEXT NOT NULL,                 -- 一般中古車 / スポーツカー / ミニバン・SUV / クラシックカー / 共通
+    subject TEXT NOT NULL, body TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE template_versions (
+    template_id TEXT NOT NULL REFERENCES templates(id), version INTEGER NOT NULL,
+    subject TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL, created_by TEXT,
+    PRIMARY KEY (template_id, version)
+);
+
+-- 下書き（版を持つ。承認は特定の版の内容ハッシュに結び付く）
+CREATE TABLE drafts (
+    id TEXT PRIMARY KEY,                    -- DRF-ULID
+    deal_id TEXT NOT NULL REFERENCES deals(id),
+    dealer_id TEXT NOT NULL REFERENCES dealers(id),
+    step TEXT NOT NULL,
+    account_id TEXT,
+    to_contact_id TEXT,
+    to_address TEXT NOT NULL DEFAULT '', cc TEXT NOT NULL DEFAULT '', bcc TEXT NOT NULL DEFAULT '',
+    subject TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '',
+    version INTEGER NOT NULL DEFAULT 1,
+    source TEXT NOT NULL,                   -- 手動 / 定型文 / AI / AI手動貼付
+    template_id TEXT, template_version INTEGER, ai_usage_id INTEGER,
+    basis_json TEXT,                        -- 文面作成に使った事実と根拠
+    summary_ja TEXT,                        -- 日本語の内容確認（AI 利用時のみ。翻訳済みとは表示しない）
+    reply_to_message_id TEXT,               -- 返信下書きの元になった受信メッセージ
+    status TEXT NOT NULL DEFAULT '下書き',
+    created_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_drafts_deal ON drafts(deal_id);
+CREATE TABLE draft_versions (
+    draft_id TEXT NOT NULL REFERENCES drafts(id), version INTEGER NOT NULL,
+    to_address TEXT, cc TEXT, bcc TEXT, subject TEXT, body TEXT, source TEXT, account_id TEXT,
+    created_at TEXT NOT NULL, created_by TEXT,
+    PRIMARY KEY (draft_id, version)
+);
+CREATE TABLE attachments (
+    id TEXT PRIMARY KEY,                    -- ATT-ULID
+    draft_id TEXT NOT NULL REFERENCES drafts(id),
+    filename TEXT NOT NULL, content_type TEXT NOT NULL, size INTEGER NOT NULL, sha256 TEXT NOT NULL,
+    stored_name TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE approvals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    draft_id TEXT NOT NULL REFERENCES drafts(id),
+    draft_version INTEGER NOT NULL,
+    content_hash TEXT NOT NULL,
+    approved_by TEXT, approved_at TEXT NOT NULL,
+    revoked_at TEXT, revoked_reason TEXT
+);
+CREATE INDEX idx_approvals_draft ON approvals(draft_id);
+
+-- 送信アカウント（認証情報は DB に置かず、OS の資格情報保管に置く）
+CREATE TABLE mail_accounts (
+    id TEXT PRIMARY KEY,                    -- ACC-ULID
+    provider TEXT NOT NULL,                 -- test / smtp_imap / gmail / graph
+    label TEXT NOT NULL,
+    from_address TEXT NOT NULL, from_name TEXT,
+    config_json TEXT NOT NULL DEFAULT '{}',
+    signature TEXT,
+    daily_limit INTEGER NOT NULL DEFAULT 30,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL DEFAULT '未接続',
+    status_detail TEXT,
+    last_sync_at TEXT, last_sync_ok_at TEXT, sync_error TEXT, sync_cursor TEXT,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+
+CREATE TABLE threads (
+    id TEXT PRIMARY KEY,                    -- THR-ULID
+    account_id TEXT, dealer_id TEXT, deal_id TEXT,
+    subject TEXT, external_thread_id TEXT,
+    last_message_at TEXT, created_at TEXT NOT NULL
+);
+CREATE INDEX idx_threads_ext ON threads(account_id, external_thread_id);
+CREATE TABLE messages (
+    id TEXT PRIMARY KEY,                    -- MSG-ULID
+    thread_id TEXT REFERENCES threads(id),
+    account_id TEXT NOT NULL,
+    direction TEXT NOT NULL,                -- out / in
+    message_id_header TEXT, in_reply_to TEXT, references_hdr TEXT,
+    external_id TEXT, external_thread_id TEXT,
+    from_addr TEXT, to_addrs TEXT, cc_addrs TEXT, subject TEXT, body_text TEXT,
+    sent_at TEXT, received_at TEXT,
+    dealer_id TEXT, deal_id TEXT, draft_id TEXT, schedule_id TEXT,
+    kind TEXT NOT NULL,                     -- 送信 / 返信 / 自動応答 / 不達通知 / 配信停止要求 / 拒否の疑い / 未分類
+    link_method TEXT,                       -- 返信参照 / 会話ID / 送信元アドレス一致 / 送信元ドメイン一致（要確認） / 手動
+    needs_action INTEGER NOT NULL DEFAULT 0,
+    handled_at TEXT, handled_by TEXT, note TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX idx_messages_ext ON messages(account_id, external_id);
+CREATE INDEX idx_messages_mid ON messages(message_id_header);
+CREATE INDEX idx_messages_deal ON messages(deal_id);
+
+-- 予約（一連の予定＝sequence）。本文は承認済みの下書き版を送る
+CREATE TABLE sequences (
+    id TEXT PRIMARY KEY,                    -- SEQ-ULID
+    deal_id TEXT NOT NULL REFERENCES deals(id),
+    name TEXT NOT NULL,
+    stop_on_reply INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL DEFAULT '有効',
+    created_by TEXT, created_at TEXT NOT NULL
+);
+CREATE TABLE schedules (
+    id TEXT PRIMARY KEY,                    -- SCH-ULID
+    sequence_id TEXT REFERENCES sequences(id),
+    deal_id TEXT NOT NULL REFERENCES deals(id),
+    dealer_id TEXT NOT NULL REFERENCES dealers(id),
+    draft_id TEXT NOT NULL REFERENCES drafts(id),
+    account_id TEXT NOT NULL,
+    step TEXT NOT NULL,
+    send_at_utc TEXT NOT NULL,
+    input_tz TEXT NOT NULL,
+    status TEXT NOT NULL,                   -- 承認待ち / 予約済み / 送信中 / 送信済み / 送信前に失敗 / 結果確認待ち / 保留 / 一時停止 / 取消
+    hold_reason TEXT,
+    claimed_by TEXT, claimed_at TEXT,
+    sent_message_id TEXT,
+    created_by TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_schedules_due ON schedules(status, send_at_utc);
+CREATE INDEX idx_schedules_dealer ON schedules(dealer_id);
+
+-- 送信試行（同じ内容を二重に送らないための記録。idempotency_key は一意）
+CREATE TABLE send_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    schedule_id TEXT, draft_id TEXT NOT NULL, draft_version INTEGER NOT NULL,
+    account_id TEXT NOT NULL, instance_id TEXT NOT NULL,
+    test_mode INTEGER NOT NULL DEFAULT 0,
+    actual_recipients TEXT,
+    message_id_header TEXT, provider_message_id TEXT, provider_thread_id TEXT,
+    result TEXT NOT NULL,                   -- 送信中 / 受付済み / 送信前に失敗 / 結果不明 / 照合で受付確認 / 照合で未送信確認 / 人が送信済みと判断 / 人が未送信と判断
+    error TEXT,
+    started_at TEXT NOT NULL, finished_at TEXT
+);
+
+-- 連絡拒否・送信停止（範囲ごと。無効な宛先と会社全体の拒否は別の範囲）
+CREATE TABLE suppressions (
+    id TEXT PRIMARY KEY,                    -- SUP-ULID
+    scope TEXT NOT NULL,                    -- 会社 / 個人 / アドレス / ドメイン / 無効な宛先
+    dealer_id TEXT, person_id TEXT, address TEXT, domain TEXT,
+    status TEXT NOT NULL,                   -- 確定 / 確認待ち / 解除
+    reason TEXT, source TEXT NOT NULL,      -- 手動 / 返信 / 不達通知 / 停止リンク
+    message_id TEXT,
+    created_at TEXT NOT NULL, created_by TEXT,
+    resolved_at TEXT, resolved_by TEXT
+);
+CREATE INDEX idx_suppressions_addr ON suppressions(address);
+CREATE INDEX idx_suppressions_dealer ON suppressions(dealer_id);
+CREATE TABLE unsubscribe_tokens (
+    token_hash TEXT PRIMARY KEY, dealer_id TEXT, address TEXT NOT NULL,
+    created_at TEXT NOT NULL, used_at TEXT
+);
+
+CREATE TABLE ai_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider TEXT NOT NULL, model TEXT, purpose TEXT, dealer_id TEXT,
+    input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0,
+    ok INTEGER NOT NULL, error TEXT, created_at TEXT NOT NULL
+);
+
+-- 操作履歴（秘密情報・本文は残さない）
+CREATE TABLE audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    at TEXT NOT NULL, actor TEXT, action TEXT NOT NULL, target TEXT, detail TEXT
+);
+CREATE INDEX idx_audit_at ON audit_log(at);
+
+-- 稼働状態（送信モード・送信担当の稼働環境・照合待ち等）
+CREATE TABLE runtime_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
+-- テスト用メール接続先の受信箱・送信箱（外部へは出さない）
+CREATE TABLE test_mailbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id TEXT NOT NULL,
+    folder TEXT NOT NULL,                   -- sent / inbox
+    raw TEXT NOT NULL,
+    message_id_header TEXT,
+    created_at TEXT NOT NULL
+);
+"""
+
+
+def _migrate_v2(conn: sqlite3.Connection) -> None:
+    for stmt in _split_sql(SCHEMA_V2):
+        conn.execute(stmt)
+    # 既存の共有モード利用者のうち最初の 1 人を管理者にする（既定パスワードは作らない）
+    conn.execute("UPDATE users SET role='admin' WHERE id=(SELECT MIN(id) FROM users)")
+
+
 Migration = tuple[int, str, Callable[[sqlite3.Connection], None]]
 
 # 版番号は 1 から連番。既存の移行は書き換えず、変更は新しい版として追加する。
 MIGRATIONS: list[Migration] = [
     (1, "初期構造（販売店・連絡方法・根拠・履歴・候補・ジョブ・利用者）", _migrate_v1),
+    (2, "営業機能（担当者・案件・文面・承認・メール接続・会話・予約・送信試行・連絡拒否・AI利用・操作履歴）", _migrate_v2),
 ]
 
 

@@ -9,15 +9,22 @@
 </head>
 <body>
 <header class="top">
-  <div class="brand"><a href="/">{{ APP_NAME }}</a><span class="sub">英国中古車販売店の調査</span></div>
+  <div class="brand"><a href="/">{{ APP_NAME }}</a><span class="sub">英国中古車販売店の調査・営業</span></div>
   {% if user %}
   <nav>
-    <a href="/">販売店一覧</a>
+    <a href="/">ダッシュボード</a>
+    <a href="/dealers">販売店</a>
     <a href="/discover">候補発見</a>
     <a href="/candidates">候補一覧</a>
-    <a href="/add">URL追加・CSV取込</a>
+    <a href="/add">URL追加・CSV</a>
     <a href="/jobs">調査の進捗</a>
-    <a href="/settings">設定・バックアップ</a>
+    <a href="/deals">営業案件</a>
+    <a href="/drafts">文面</a>
+    <a href="/schedules">送信・予約</a>
+    <a href="/inbox">受信・対応</a>
+    <a href="/suppressions">送信停止</a>
+    <a href="/settings/mail">メール・AI設定</a>
+    <a href="/settings">調査設定・バックアップ</a>
     <a href="/about">説明</a>
   </nav>
   <div class="who">
@@ -32,6 +39,7 @@
   {% endif %}
 </header>
 <main>
+{% if send_mode_banner %}{% endif %}
 {% if msg %}<p class="flash ok">{{ msg }}</p>{% endif %}
 {% if err %}<p class="flash err">{{ err }}</p>{% endif %}
 {% block content %}{% endblock %}

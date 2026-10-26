@@ -104,6 +104,7 @@ def serve(paths: Paths, server, app, mode: str, port: int, extra_lock: dict | No
         server.run()
     finally:
         app.state.jobs.shutdown()
+        app.state.scheduler.shutdown()
         if mode == "local":
             try:
                 lock.unlink()
@@ -114,6 +115,7 @@ def serve(paths: Paths, server, app, mode: str, port: int, extra_lock: dict | No
 def run_server(paths: Paths, host: str, port: int, mode: str, open_browser: bool, allowed_hosts: set[str] | None,
                secure_cookies: bool, ssl_cert: str | None = None, ssl_key: str | None = None) -> None:
     server, app, url = build_server(paths, host, port, mode, allowed_hosts, secure_cookies, ssl_cert, ssl_key)
+    app.state.port = port
     print(f"{APP_NAME} {__version__}")
     print(f"データの保存場所: {paths.data_dir}")
     print(f"画面: {url}")
@@ -205,7 +207,7 @@ def cmd_create_user(args, paths: Paths) -> None:
             sys.exit("パスワードが一致しません")
     conn = connect(paths.db)
     try:
-        auth.create_user(conn, args.username, pw)
+        auth.create_user(conn, args.username, pw, args.role)
     except ValueError as exc:
         sys.exit(str(exc))
     finally:
@@ -233,6 +235,14 @@ def cmd_restore(args, paths: Paths) -> None:
         sys.exit(str(exc))
     for line in migrate(paths.db, paths.backups):
         print(line)
+    from . import runtime
+    from .db import connect
+
+    conn = connect(paths.db)
+    try:  # 復元したデータで送信を再開する前に、送信結果の照合と送信担当の確認を求める
+        runtime.mark_reconcile_required(conn, f"バックアップから復元（{manifest['created_at']} 作成）", "コマンド")
+    finally:
+        conn.close()
     print(f"復元しました（作成 {manifest['created_at']}）。復元前のデータ: {pre}")
 
 
@@ -260,6 +270,59 @@ def cmd_migrate(args, paths: Paths) -> None:
     print("\n".join(lines) or "更新は不要です")
 
 
+def cmd_selfcheck(args, paths: Paths) -> None:
+    """配布物の部品確認（資格情報保管・時刻帯データ・AI ライブラリ・メール接続部品）。外部へは接続しない。"""
+    import json
+    import secrets as _secrets
+
+    result: dict = {"version": __version__, "ok": True}
+
+    def check(name, fn):
+        try:
+            result[name] = fn()
+        except Exception as exc:
+            result[name] = f"失敗: {exc!r}"
+            result["ok"] = False
+
+    def secret_store():
+        from .secretstore import SecretStore
+
+        store = SecretStore(paths.secrets)
+        probe, value = "selfcheck:probe", _secrets.token_hex(8)
+        store.set(probe, value)
+        try:
+            if store.get(probe) != value:
+                raise RuntimeError("保存した値を読み戻せません")
+        finally:
+            store.delete(probe)
+        if store.get(probe) is not None:
+            raise RuntimeError("削除できません")
+        return {"os_store": store._keyring is not None, "backend": store.backend_name}
+
+    def timezones():
+        from .tz import local_to_utc
+
+        return local_to_utc("2026-07-01", "10:00", "Europe/London").strftime("%H:%M") + " UTC"
+
+    def anthropic_sdk():
+        import anthropic
+
+        return anthropic.__version__
+
+    def mail_parts():
+        from .mail import gmail, graph, oauth, smtp_imap, testbox  # noqa: F401
+
+        return "ok"
+
+    check("secret_store", secret_store)
+    check("timezone", timezones)
+    check("anthropic", anthropic_sdk)
+    check("mail", mail_parts)
+    print(json.dumps(result, ensure_ascii=False))
+    if not result["ok"]:
+        sys.exit(1)
+
+
 def main(argv: list[str] | None = None) -> None:
     for name in ("stdout", "stderr"):
         if getattr(sys, name) is None:  # コンソールのない実行ファイル
@@ -282,6 +345,7 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("create-user", help="共有モードの利用者を作成・パスワード変更")
     p.add_argument("username")
     p.add_argument("--password-from-env", action="store_true", help="環境変数 SDR_NEW_PASSWORD から読む（自動化用）")
+    p.add_argument("--role", choices=["admin", "member"], help="admin＝管理者（設定変更可）、member＝担当者。最初の利用者は管理者")
     p = sub.add_parser("backup", help="バックアップ ZIP を作成")
     p.add_argument("--dest")
     p = sub.add_parser("restore", help="バックアップ ZIP から復元（アプリ終了中に実行）")
@@ -289,6 +353,7 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("export-csv", help="販売店一覧を CSV に出力")
     p.add_argument("file")
     sub.add_parser("migrate", help="データベースの版を更新")
+    sub.add_parser("selfcheck", help="部品の動作確認（資格情報保管・時刻帯・AI・メール部品。外部へは接続しない）")
     args = parser.parse_args(argv)
 
     paths = Paths(Path(args.data_dir) if args.data_dir else default_data_dir())
@@ -297,7 +362,7 @@ def main(argv: list[str] | None = None) -> None:
     from .db import MigrationError
 
     handlers = {"desktop": cmd_desktop, "local": cmd_local, "shared": cmd_shared, "create-user": cmd_create_user,
-                "backup": cmd_backup, "restore": cmd_restore, "export-csv": cmd_export, "migrate": cmd_migrate}
+                "backup": cmd_backup, "restore": cmd_restore, "export-csv": cmd_export, "migrate": cmd_migrate, "selfcheck": cmd_selfcheck}
     if args.cmd is None:
         args.cmd, args.port, args.no_browser = default_command(), 8765, False
     try:

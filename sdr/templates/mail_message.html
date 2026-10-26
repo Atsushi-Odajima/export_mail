@@ -1,0 +1,35 @@
+{% extends "base.html" %}{% from "macros.html" import csrf_field %}
+{% block title %}{{ m.subject }} - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<p class="small"><a href="/inbox">← 受信・対応</a>{% if m.deal_id %} ／ <a href="/deals/{{ m.deal_id }}">案件</a>{% endif %}</p>
+<h1>{{ '受信' if m.direction == 'in' else '送信' }}：{{ m.subject or '（件名なし）' }}</h1>
+<div class="grid2">
+<section class="card">
+  <table class="kv"><tr><th>日時</th><td>{{ (m.received_at or m.sent_at)|t(tz) }}</td></tr><tr><th>送信元</th><td class="mono">{{ m.from_addr }}</td></tr>
+  <tr><th>宛先</th><td class="mono">{{ m.to_addrs }} {{ m.cc_addrs }}</td></tr><tr><th>分類</th><td><span class="state">{{ m.kind }}</span></td></tr>
+  <tr><th>関連付け</th><td>{{ m.link_method or '—' }}{% if m.link_method and '要確認' in m.link_method %} <span class="tag warn">要確認</span>{% endif %}</td></tr>
+  <tr><th>Message-ID</th><td class="mono">{{ m.message_id_header or '' }}</td></tr><tr><th>状態</th><td>{{ '対応済み（' ~ m.handled_by ~ '）' if m.handled_at else ('対応待ち' if m.needs_action else '—') }}</td></tr>
+  {% if m.note %}<tr><th>メモ</th><td class="pre">{{ m.note }}</td></tr>{% endif %}</table>
+  <h3>本文（文字として表示）</h3><div class="quote">{{ m.body_text }}</div>
+  {% if related_supp %}<p class="box warn">この受信で登録された送信停止：{% for s in related_supp %}{{ s.scope }}（{{ s.status }}）{{ s.address or s.dealer_name or '' }} {% endfor %}<a href="/suppressions">一覧で確定・解除</a></p>{% endif %}
+</section>
+<section class="card">
+  <h2>対応</h2>
+  {% if m.direction == 'in' %}
+  <form method="post" action="/messages/{{ m.id }}/handled" class="stack">{{ csrf_field(csrf) }}<label>メモ<input name="note"></label><button>対応済みにする</button></form>
+  <h3>返信の下書きを作る（自動では送信しません）</h3>
+  <form method="post" action="/messages/{{ m.id }}/reply-draft" class="stack">{{ csrf_field(csrf) }}
+    <select name="method"><option value="template">定型文</option><option value="ai" {{ 'disabled' if not (ai_status.enabled and ai_status.has_key) }}>AI</option></select>
+    <input name="instruction" placeholder="AI への指示（日本語・任意）"><button class="secondary">返信の下書きを作る</button></form>
+  {% if ai_status.enabled and ai_status.has_key %}<form method="post" action="/messages/{{ m.id }}/summary" class="inline">{{ csrf_field(csrf) }}<button class="secondary small">日本語で要約（AI）</button></form>{% endif %}
+  <h3>分類を直す</h3>
+  <form method="post" action="/messages/{{ m.id }}/kind" class="toolbar">{{ csrf_field(csrf) }}<select name="kind">{% for k in ['返信', '自動応答', '不達通知', '配信停止要求', '拒否の疑い', '未分類'] %}<option {{ 'selected' if k == m.kind }}>{{ k }}</option>{% endfor %}</select><button class="secondary small">変更</button></form>
+  <p class="small muted">分類を変えても、登録済みの送信停止・保留は自動では戻しません（送信停止の一覧・予約の画面で確認してください）。</p>
+  {% endif %}
+  <h3>案件への関連付けを直す</h3>
+  <form method="post" action="/messages/{{ m.id }}/relink" class="toolbar">{{ csrf_field(csrf) }}<select name="deal_id">{% for d in all_deals %}<option value="{{ d.id }}" {{ 'selected' if d.id == m.deal_id }}>{{ d.dealer_name }}：{{ d.title }}</option>{% endfor %}</select><button class="secondary small">関連付け</button></form>
+</section>
+</div>
+<section class="card"><h2>同じ会話</h2>
+{% for t in thread %}<p class="small">{{ (t.sent_at or t.received_at)|t(tz) }} {{ '送信' if t.direction == 'out' else '受信' }}（{{ t.kind }}） <a href="/messages/{{ t.id }}">{{ t.subject }}</a></p>{% endfor %}</section>
+{% endblock %}

@@ -1,7 +1,7 @@
 # 利用しているライブラリとライセンス
 
 配布版（Windows の実行ファイル）に同梱される Python ライブラリと、その版・ライセンスです（`requirements.txt` で版を固定）。
-2026-10-24 に各パッケージのメタデータで確認しました。
+2026-10-24 に各パッケージのメタデータで確認しました（営業メール機能で追加した分は 2026-10-26 に確認）。
 
 | ライブラリ | 版 | ライセンス |
 |---|---|---|
@@ -28,6 +28,13 @@
 | pythonnet / clr-loader（pywebview が使う .NET 連携） | 3.2.1 / 0.3.1 | MIT / MIT |
 | cffi / pycparser | 2.1.1 / 3.12 | MIT-0 / BSD-3-Clause |
 | bottle / proxy-tools（pywebview の依存） | 0.13.4 / 0.1.0 | MIT / MIT |
+| anthropic（Claude API の公式 SDK。AI を使う場合のみ通信） | 2.3.0 | Apache-2.0 |
+| httpx2 / httpcore2（anthropic の依存） | 2.16.0 / 2.16.0 | BSD-3-Clause |
+| jiter / docstring-parser / sniffio / truststore（anthropic の依存） | 0.18.0 / 0.18.0 / 1.3.1 / 0.10.5 | MIT / MIT / MIT OR Apache-2.0 / MIT |
+| keyring（OS の資格情報保管の利用） | 25.7.0 | MIT |
+| jaraco.classes / jaraco.context / jaraco.functools / more-itertools（keyring の依存） | 3.4.0 / 6.1.2 / 4.6.0 / 11.2.1 | MIT |
+| pywin32-ctypes（keyring の Windows 用部品。Windows のみ） | 0.2.3 | BSD-3-Clause（PyPI の記載） |
+| tzdata（時刻帯データ。Windows には IANA の時刻帯データがないため） | 2026.5 | Apache-2.0 |
 | Microsoft Edge WebView2 の読み込み部品（pywebview に同梱の WebView2Loader.dll 等） | — | Microsoft の WebView2 SDK ライセンス（再配布可） |
 | Python 本体（実行ファイルに同梱） | 3.12 | PSF License |
 

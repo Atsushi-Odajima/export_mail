@@ -1,0 +1,48 @@
+{% extends "base.html" %}{% from "macros.html" import csrf_field %}
+{% block title %}メール接続 - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<p class="small"><a href="/settings/mail">← メール・AI 設定</a></p>
+<h1>{{ a.label if a else '新しいメール接続' }}（{{ PROVIDERS[provider] }}）</h1>
+{% if a %}<p class="box">状態：<b>{{ a.status }}</b> {{ a.status_detail or '' }}<br>受信の確認：{{ a.last_sync_ok_at|t(tz) }}{% if a.sync_error %} <span class="warntext">{{ a.sync_error }}</span>{% endif %}</p>{% endif %}
+<div class="grid2">
+<section class="card">
+<form method="post" action="/accounts/save" class="stack">{{ csrf_field(csrf) }}<input type="hidden" name="id" value="{{ a.id if a else '' }}"><input type="hidden" name="provider" value="{{ provider }}">
+  <label>名前<input name="label" value="{{ a.label if a else PROVIDERS[provider] }}"></label>
+  <label>送信元メールアドレス<input name="from_address" value="{{ a.from_address if a else '' }}" required></label>
+  <label>送信者名（英語）<input name="from_name" value="{{ a.from_name if a and a.from_name else '' }}"></label>
+  <label>1日の送信上限（このアプリ側の上限。サービス側の上限は別にあります）<input name="daily_limit" value="{{ a.daily_limit if a else 30 }}"></label>
+  {% if provider == 'test' %}
+  <label>疑似動作<select name="simulate">{% for s in SIMULATIONS %}<option {{ 'selected' if cfg.simulate == s }}>{{ s }}</option>{% endfor %}</select></label>
+  <p class="small muted">テスト用接続先は外部へ一切送りません。送信はアプリ内の送信箱に記録され、「テスト用受信箱」から疑似返信・不達・配信停止などを入れて動きを確認できます。</p>
+  {% elif provider == 'smtp_imap' %}
+  <label>よく使う設定<select name="preset"><option value="">（手入力）</option><option value="gmail">Gmail（アプリパスワード）</option></select></label>
+  <label>SMTP サーバー<input name="smtp_host" value="{{ cfg.smtp_host }}"></label><label>SMTP ポート<input name="smtp_port" value="{{ cfg.smtp_port }}"></label>
+  <label>暗号化<select name="smtp_security">{% for s in ['starttls', 'ssl'] %}<option {{ 'selected' if cfg.smtp_security == s }}>{{ s }}</option>{% endfor %}</select></label>
+  <label>IMAP サーバー（受信の確認に必要）<input name="imap_host" value="{{ cfg.imap_host }}"></label><label>IMAP ポート<input name="imap_port" value="{{ cfg.imap_port }}"></label>
+  <label>ユーザー名（空欄なら送信元アドレス）<input name="username" value="{{ cfg.username }}"></label>
+  <label>受信フォルダー<input name="inbox_folder" value="{{ cfg.inbox_folder }}"></label><label>送信済みフォルダー<input name="sent_folder" value="{{ cfg.sent_folder }}"></label>
+  <label class="check"><input type="checkbox" name="save_to_sent" value="1" {{ 'checked' if cfg.save_to_sent }}>送信後に送信済みフォルダーへ保存（サーバーが自動保存しない場合）</label>
+  <label>パスワード／アプリパスワード（{{ '保存済み・変更時のみ入力' if has_password else '未保存' }}）<input name="password" type="password" autocomplete="off"></label>
+  {% else %}
+  <label>クライアント ID（{{ 'Google Cloud の OAuth クライアント（デスクトップアプリ）' if provider == 'gmail' else 'Microsoft Entra のアプリ登録（モバイルとデスクトップ）' }}）<input name="client_id" value="{{ cfg.client_id or '' }}"></label>
+  {% if provider == 'gmail' %}<label>クライアントシークレット（デスクトップアプリ用。{{ '保存済み' if has_client_secret else '未保存' }}）<input name="client_secret" type="password" autocomplete="off"></label>{% endif %}
+  {% if provider == 'graph' %}<label>アカウントの種類<select name="tenant">{% for t, l in [('common', '個人・組織の両方'), ('consumers', '個人（Outlook.com）'), ('organizations', '組織（Microsoft 365）')] %}<option value="{{ t }}" {{ 'selected' if cfg.tenant == t }}>{{ l }}</option>{% endfor %}</select></label>{% endif %}
+  <label>初回に取得する受信の期間（日）<input name="sync_days" value="{{ cfg.sync_days or 14 }}"></label>
+  <p class="small">登録するリダイレクト URI：<span class="mono">{{ redirect }}</span>{% if not port %}（アプリを通常起動したときのポートで決まります）{% endif %}</p>
+  {% endif %}
+  <label>署名（英語・任意。文面の署名は「自社情報」でも設定できます）<textarea name="signature" rows="3">{{ a.signature if a and a.signature else '' }}</textarea></label>
+  <button>保存</button>
+</form>
+</section>
+{% if a %}<section class="card">
+  <h2>操作</h2>
+  {% if provider in ('gmail', 'graph') %}<p><a class="button" href="/accounts/{{ a.id }}/oauth/start">{{ '再認証する' if has_token else '接続する（ブラウザーで認証）' }}</a></p>
+  <p class="small muted">このアプリを動かしている PC のブラウザーで操作してください。認証後、更新トークンだけを OS の資格情報保管に保存します。
+  {% if provider == 'gmail' %}Google の OAuth 同意画面が「テスト」のままだと 7 日ごとに再認証が必要です（「本番」にすると個人利用では未確認アプリの警告が出ますが 100 人まで使えます）。{% endif %}</p>{% endif %}
+  <form method="post" action="/accounts/{{ a.id }}/check" class="inline">{{ csrf_field(csrf) }}<button class="secondary">接続を確認</button></form>
+  <form method="post" action="/accounts/{{ a.id }}/sync" class="inline">{{ csrf_field(csrf) }}<button class="secondary">受信を確認</button></form>
+  <form method="post" action="/accounts/{{ a.id }}/toggle" class="inline">{{ csrf_field(csrf) }}<button class="secondary">{{ '無効にする' if a.enabled else '有効にする' }}</button></form>
+  <form method="post" action="/accounts/{{ a.id }}/disconnect" class="inline" data-confirm="保存した認証情報を削除し、このアカウントの予約を保留にします">{{ csrf_field(csrf) }}<button class="danger">切断</button></form>
+</section>{% endif %}
+</div>
+{% endblock %}

@@ -41,11 +41,11 @@ def seed_dealer(paths, malicious=False):
 
 def test_list_filter_detail_and_csv(paths, local_client):
     did = seed_dealer(paths)
-    r = local_client.get("/")
+    r = local_client.get("/dealers")
     assert r.status_code == 200 and "Test Motors Ltd" in r.text and "sales@test-motors.example" in r.text
     assert "hello@pixelagency.example" not in r.text  # 制作会社のアドレスは一覧に出さない
-    assert "Test Motors Ltd" in local_client.get("/?has_email=1&has_form=1&region=ヨークシャー").text
-    assert "Test Motors Ltd" not in local_client.get("/?category=クラシックカー").text
+    assert "Test Motors Ltd" in local_client.get("/dealers?has_email=1&has_form=1&region=ヨークシャー").text
+    assert "Test Motors Ltd" not in local_client.get("/dealers?category=クラシックカー").text
     d = local_client.get(f"/dealers/{did}")
     assert d.status_code == 200 and "出典を開く" in d.text and did in d.text and "制作会社" in d.text
     csv = local_client.get("/export/dealers.csv?has_email=1")
@@ -77,7 +77,7 @@ def test_external_text_is_escaped(paths, local_client):
     assert "&lt;script&gt;" in page or "alert(1)" not in page
     assert 'href="javascript:' not in page
     assert "<img src=x" not in page
-    assert local_client.get("/").headers["content-security-policy"].startswith("default-src 'self'")
+    assert local_client.get("/dealers").headers["content-security-policy"].startswith("default-src 'self'")
 
 
 def test_host_header_checked(paths):

@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% from "macros.html" import csrf_field %}
+{% block title %}営業案件 - {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>営業案件</h1>
+<form method="get" class="filters"><label>状態<select name="stage"><option value="">すべて</option>{% for s in DEAL_STAGES %}<option {{ 'selected' if s == stage }}>{{ s }}</option>{% endfor %}</select></label>
+  <label>担当者<input name="owner" value="{{ owner }}"></label><button>絞り込む</button></form>
+<section class="card"><h2>新しい案件</h2>
+<form method="post" action="/deals/new" class="toolbar">{{ csrf_field(csrf) }}
+  <select name="dealer_id" required><option value="">販売店を選ぶ</option>{% for d in dealers %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select>
+  <input name="title" placeholder="案件名" size="30"><input name="owner" placeholder="担当者（空欄なら自分）"><button>作成</button></form></section>
+<div class="tablewrap"><table class="list">
+<thead><tr><th>販売店</th><th>案件</th><th>状態</th><th>担当</th><th>送信可の判断</th><th>次の対応</th><th>次の送信予定</th><th>未対応</th></tr></thead><tbody>
+{% for x in deals %}<tr><td>{{ x.dealer_name }}</td><td><a href="/deals/{{ x.id }}">{{ x.title }}</a></td><td><span class="state">{{ x.stage }}</span></td><td>{{ x.owner or '' }}</td>
+<td>{{ '送信可' if x.send_allowed else '未判断' }}</td><td>{{ x.next_action_at|t(tz) if x.next_action_at else '' }} {{ x.next_action or '' }}</td><td>{{ x.next_send|t(tz) if x.next_send else '' }}</td><td>{{ x.pending or '' }}</td></tr>
+{% else %}<tr><td colspan="8">まだありません。販売店の詳細画面か上の欄から作れます。</td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}
