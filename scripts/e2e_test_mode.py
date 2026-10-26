@@ -75,4 +75,5 @@ def main(base: str) -> None:
 
 
 if __name__ == "__main__":
+    sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")  # Windows の CI（cp1252）でも日本語を出せるように
     main(sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8765")

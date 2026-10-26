@@ -318,7 +318,7 @@ def cmd_selfcheck(args, paths: Paths) -> None:
     check("timezone", timezones)
     check("anthropic", anthropic_sdk)
     check("mail", mail_parts)
-    print(json.dumps(result, ensure_ascii=False))
+    print(json.dumps(result))  # 文字コードが日本語に対応していない出力先（CI の cp1252 等）でも壊れないよう ASCII で出す
     if not result["ok"]:
         sys.exit(1)
 
@@ -327,6 +327,8 @@ def main(argv: list[str] | None = None) -> None:
     for name in ("stdout", "stderr"):
         if getattr(sys, name) is None:  # コンソールのない実行ファイル
             setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))
+        elif hasattr(getattr(sys, name), "reconfigure"):  # 日本語を表せない出力先でも止まらないようにする
+            getattr(sys, name).reconfigure(errors="backslashreplace")
     parser = argparse.ArgumentParser(prog="SamuraiDealerResearch", description=f"{APP_NAME} {__version__}")
     parser.add_argument("--data-dir", help="データの保存先（既定: 利用者フォルダー）")
     sub = parser.add_subparsers(dest="cmd")
