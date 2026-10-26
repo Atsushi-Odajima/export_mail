@@ -35,6 +35,12 @@ Cloudflare のアカウント作成と公開は、利用者ご本人の操作で
 > Deploy to Cloudflare ボタン（`https://deploy.workers.cloudflare.com/?url=<リポジトリURL>/tree/<ブランチ>/mobile`）でも導入できます。
 > この場合はリポジトリがあなたの GitHub に複製され、SETUP_TOKEN の入力欄が表示されます（`.dev.vars.example` に記載）。リポジトリが非公開のときは手順 2 の方法を使ってください。
 
+### 公開済みの環境（2026-10-26 に代行して公開）
+
+- アドレス：https://samurai-dealer-research.sdr-l2h8d6.workers.dev
+- データベース（D1）：`samurai-dealer-research`（地域ヒント APAC）。この環境用の ID を入れた設定は `wrangler.deploy.jsonc`（Git には入れていません）で、`npx wrangler deploy -c wrangler.deploy.jsonc` で公開し直せます。
+- この公開はダッシュボードの「リポジトリをインポート」ではなく、コマンド（wrangler）で行ったため、GitHub に push しても自動では更新されません。自動更新にしたい場合は、Cloudflare の Worker の「設定」→「ビルド」でこのリポジトリ（ルートディレクトリ `mobile`）を接続し、デプロイコマンドを `npx wrangler deploy -c wrangler.deploy.jsonc` にするか、`wrangler.jsonc` に上記データベースの ID を書き加えてください。
+
 ### 更新するとき
 
 GitHub の該当ブランチに新しい版が入ると、Cloudflare が自動で作り直して公開します（Workers Builds）。データ（D1）は残ります。
@@ -55,8 +61,8 @@ GitHub の該当ブランチに新しい版が入ると、Cloudflare が自動�
 
 ### 調査の進み方
 
-- **アプリを開いている間**：画面が調査を後押しするので、1 社あたり 1〜2 分程度で進みます。
-- **閉じている間**：1 分ごとの定期実行で少しずつ（1 分に数ページ）進みます。1 社は最大 10 ページです。
+- **アプリを開いている間**：画面が調査を後押しするので、1 社あたり 1 分前後で進みます（本番で 7 ページの販売店が約 45 秒）。
+- **閉じている間**：1 分ごとの定期実行で、1 分に約 1 ページずつ進みます（1 社は最大 10 ページなので 10 分前後）。多くの販売店をまとめて調べるときは、進捗タブを開いたままにすると速く終わります。
 - 各サイトには 2 秒以上の間隔を空け、robots.txt を守ります。CAPTCHA やアクセス制限（403 など）は回避せず「取得失敗」として理由を残します。その場合は詳細画面からサイトを開いて手動で確認してください。
 
 ### 判断の決まり（PC 版と同じ）

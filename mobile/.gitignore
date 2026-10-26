@@ -4,3 +4,4 @@ dist/
 .dev.vars
 test-output/
 dist-test/
+wrangler.deploy.jsonc
