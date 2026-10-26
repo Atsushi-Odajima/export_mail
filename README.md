@@ -6,24 +6,45 @@
 - 営業メールの作成・送信、問い合わせフォームへの送信、予約送信は**実装していません**。将来の追加方法は [FUTURE_EMAIL_PLAN.md](FUTURE_EMAIL_PLAN.md) にまとめています。
 - 確認済みの初期データ（実在の英国販売店）を同梱しています。内容と確認方法は [docs/INITIAL_DATA_REPORT.md](docs/INITIAL_DATA_REPORT.md)、検証結果は [docs/VERIFICATION.md](docs/VERIFICATION.md) を参照してください。
 
-## iPhone 版（主な使い方）
+主な使い方は **Windows（PC）版** です（以下の説明）。
 
-**PC を使わず iPhone だけで使う場合は [mobile/README.md](mobile/README.md) を参照してください。** Cloudflare の無料プラン（Workers ＋ D1）に置き、Safari からホーム画面に追加して使う Web アプリです。調査の規則・データの形・販売店ID は下の Windows 版と共通です。
+## iPhone 版（補助）
 
-以下は Windows（PC）版の説明です。
+外出先などで iPhone から一覧を見たり調査したりする場合は [mobile/README.md](mobile/README.md) を参照してください。Cloudflare の無料プラン（Workers ＋ D1）に置く Web アプリで、調査の規則・データの形・販売店ID は Windows 版と共通です（データは PC 版とは別に保存され、自動では同期しません）。
 
 ---
 
-## 1. 起動（Windows 配布版）
+## 1. インストールと起動（Windows 版）
 
-1. `SamuraiDealerResearch-windows.zip` を入手します（GitHub の Actions → `windows-build` の最新の成功した実行 → Artifacts。30 日で消えるため、必要なら Windows PC で `scripts\build_windows.bat` を実行して作り直せます）。
-   ZIP を任意の場所（例：`ドキュメント`）に展開します。
-2. 展開したフォルダーの `SamuraiDealerResearch.exe` をダブルクリックします。
-   - 黒いウィンドウが開き、少しすると既定のブラウザーで日本語の画面（`http://127.0.0.1:8765/`）が開きます。
-   - 初回だけ Windows の「PC を保護しました」が出る場合があります（署名のないアプリのため）。「詳細情報」→「実行」で起動します。
-   - 待ち受けはこの PC 内（127.0.0.1）だけです。ほかの PC からは見えません。
-3. 終了するときは、画面右上の **「アプリを終了」** を押します（黒いウィンドウを閉じても終了します）。終了後にサーバーは残りません。
-4. もう一度 exe を起動すると、前回のデータが表示されます。すでに起動中なら、ブラウザーで既存の画面を開くだけです。
+### インストール（おすすめ）
+
+1. `SamuraiDealerResearch-Setup-1.1.0.exe` を入手します（GitHub の Actions → `windows-build` の最新の成功した実行 → Artifacts の `SamuraiDealerResearch-Setup`。成果物は 30 日で消えるため、必要なら Windows PC で `scripts\build_windows.bat` を実行して作り直せます）。
+2. ダブルクリックしてインストールします。**管理者権限は不要**です（利用者ごとに `%LOCALAPPDATA%\Programs\SamuraiDealerResearch` に入ります）。
+   - 署名のないアプリのため、初回に「Windows によって PC が保護されました」が出ることがあります。「詳細情報」→「実行」で進めます。
+   - 「デスクトップ上にアイコンを作成する」を選ぶと、デスクトップにも起動用のアイコンができます。
+3. スタートメニュー（またはデスクトップ）の **Samurai Dealer Research** で起動します。アプリ専用のウィンドウが開きます（画面の表示には Windows 標準の Microsoft Edge WebView2 を使います）。
+
+### 使い方の要点
+
+- **終了**：ウィンドウを閉じるか、画面右上の「アプリを終了」を押します。調査の実行中に閉じようとしたときだけ確認が出ます（中断した調査は次回「再開」できます）。
+- **もう一度起動したとき**：すでに開いていれば、新しく起動せずに既存のウィンドウを前面に出します。
+- **販売店のサイトなど外部へのリンク**：アプリのウィンドウではなく、いつもの既定のブラウザーで開きます。
+- **CSV・バックアップの保存**：「名前を付けて保存」の画面で保存先を選べます。
+- 待ち受けはこの PC 内（127.0.0.1）だけです。ほかの PC からは見えません。
+- Microsoft Edge WebView2 が入っていない PC では、従来どおり既定のブラウザーで画面を開きます（Windows 11 には標準で入っています。Windows 10 でも通常は Edge の更新で入っています）。
+
+### 更新・アンインストール
+
+- **更新**：新しい版のインストーラーをそのまま実行します。アプリの起動中は終了を案内されます。データは別の場所にあるため消えません。データベースの形が変わる版では、起動時に自動で更新し、その直前に自動でバックアップを作ります（「5. バックアップ・復元・更新」）。
+- **アンインストール**：Windows の「設定」→「アプリ」→「インストールされているアプリ」→ Samurai Dealer Research →「アンインストール」。アプリ本体だけを削除し、**調べたデータは残します**（不要なら下の保存場所のフォルダーを手動で削除してください）。
+
+### インストールせずに使う場合（ZIP 版）
+
+Artifacts の `SamuraiDealerResearch-windows-zip` を任意の場所に展開し、`SamuraiDealerResearch.exe` を起動します（使い方は同じです）。
+
+### コマンド用の実行ファイル
+
+同じフォルダーの `SamuraiDealerResearch-cli.exe` は、メッセージを黒いウィンドウに表示するコマンド用です（共有モード・バックアップ・復元・利用者の作成など。下の各節のコマンド例はこちらを使います）。引数なしで起動すると、従来どおり既定のブラウザーで画面を開きます。
 
 Python の導入は不要です。対象は Windows 10/11（64bit）です。
 
@@ -125,16 +146,16 @@ CSV は入出力用です。正本はデータベースで、ID・根拠・履�
 
 設定・バックアップ画面の「今すぐバックアップ」で `backups\sdr-backup-日時-manual.zip` を作ります（画面からダウンロードも可）。中身はデータベース全体（販売店 ID・人の確定値・根拠・変更履歴・候補）と説明ファイルです。取得キャッシュ・ログイン情報・APIキーは含めません。
 
-コマンドでも作れます：`SamuraiDealerResearch.exe backup`
+コマンドでも作れます：`SamuraiDealerResearch-cli.exe backup`
 
 ### 復元
 
-画面の「復元」で ZIP を選び、確認欄にチェックして実行します。**復元の直前に現在のデータを自動でバックアップ**します（`before-restore` の ZIP）。アプリを終了した状態でコマンドから復元することもできます：`SamuraiDealerResearch.exe restore バックアップ.zip`
+画面の「復元」で ZIP を選び、確認欄にチェックして実行します。**復元の直前に現在のデータを自動でバックアップ**します（`before-restore` の ZIP）。アプリを終了した状態でコマンドから復元することもできます：`SamuraiDealerResearch-cli.exe restore バックアップ.zip`
 
 ### アプリの更新（データを保持したまま）
 
 1. 画面でバックアップを作る（念のため）。
-2. アプリを終了し、アプリのフォルダーを新しい版に置き換える（データフォルダーには触れない）。
+2. アプリを終了し、新しい版のインストーラーを実行する（ZIP 版の場合はアプリのフォルダーを新しい版に置き換える。データフォルダーには触れない）。
 3. 新しい版を起動すると、データベースの版（`schema_meta.schema_version`）を確認し、必要な更新（列・テーブルの追加）を自動で行います。**更新の直前に `backups\pre-migration-v版-日時.sqlite3` を自動作成**します。
 
 ### 更新に失敗したとき
@@ -152,14 +173,14 @@ CSV は入出力用です。正本はデータベースで、ID・根拠・履�
 ### 準備（サーバー PC）
 
 ```bat
-SamuraiDealerResearch.exe create-user alice
-SamuraiDealerResearch.exe create-user bob
+SamuraiDealerResearch-cli.exe create-user alice
+SamuraiDealerResearch-cli.exe create-user bob
 ```
 
 パスワード（10 文字以上）は対話で入力します。既定の共通パスワードはありません。パスワードは scrypt でハッシュ化して保存し、ログイン後は HttpOnly・Secure・SameSite のセッション Cookie（12 時間）で管理します。更新操作はすべて CSRF トークンで保護し、5 回続けて失敗すると 15 分間ログインを受け付けません。
 
 ```bat
-SamuraiDealerResearch.exe shared --allowed-host あなたの公開ホスト名
+SamuraiDealerResearch-cli.exe shared --allowed-host あなたの公開ホスト名
 ```
 
 既定では `127.0.0.1:8780` だけで待ち受けます（ログイン必須。未ログインでは一覧・CSV・調査実行の API に到達できません）。127.0.0.1 以外で待ち受ける場合は HTTPS 証明書（`--certfile` `--keyfile`）が必要で、指定がなければ起動しません。**ルーターのポート開放は手順にしていません。**
@@ -192,7 +213,7 @@ python -m pytest -q tests        # 試験（架空データのみ使用）
 python run_app.py local          # 開発用起動（--data-dir で保存先を変更可）
 ```
 
-- Windows 配布版の作成：Windows PC で `scripts\build_windows.bat`（Python 3.12 64bit が必要）。GitHub に push すると `.github/workflows/windows-build.yml` が Windows ランナーで試験・ビルド・起動確認を行い、ZIP を成果物として保存します。
+- Windows 配布版の作成：Windows PC で `scripts\build_windows.bat`（Python 3.12 64bit が必要。インストーラーも作る場合は Inno Setup 6 も導入）。GitHub に push すると `.github/workflows/windows-build.yml` が Windows ランナーで試験・ビルド・インストール→専用ウィンドウでの表示→二重起動→更新→アンインストールを確認し、インストーラーと ZIP を成果物として保存します。
 - 構成（処理ごとにファイルを分けています）
 
 | ファイル | 役割 |
@@ -208,6 +229,8 @@ python run_app.py local          # 開発用起動（--data-dir で保存先を�
 | `sdr/backup.py` `sdr/csv_io.py` `sdr/seed.py` | バックアップ・CSV・初期データ |
 | `sdr/auth.py` `sdr/web.py` `sdr/templates/` | 認証・画面 |
 | `sdr/main.py` | 起動・コマンド |
+| `sdr/desktop.py` | 専用ウィンドウ（Edge WebView2）での起動・二重起動の防止・終了時の確認 |
+| `installer/SamuraiDealerResearch.iss` | インストーラー（Inno Setup） |
 | `scripts/research_urls.py` | 開発用：URL 一覧を画面なしで一括調査 |
 
 - 依存ライブラリと版は `requirements.txt` に固定しています。ライセンスは [LICENSES.md](LICENSES.md)。

@@ -24,9 +24,14 @@
 | typing-extensions | 4.16.0 | PSF-2.0 |
 | click | 8.5.0 | BSD-3-Clause |
 | opentelemetry-api（fastapi の依存） | 1.45.1 | Apache-2.0 |
+| pywebview（専用ウィンドウ。Windows のみ） | 6.2.1 | BSD-3-Clause |
+| pythonnet / clr-loader（pywebview が使う .NET 連携） | 3.2.1 / 0.3.1 | MIT / MIT |
+| cffi / pycparser | 2.1.1 / 3.12 | MIT-0 / BSD-3-Clause |
+| bottle / proxy-tools（pywebview の依存） | 0.13.4 / 0.1.0 | MIT / MIT |
+| Microsoft Edge WebView2 の読み込み部品（pywebview に同梱の WebView2Loader.dll 等） | — | Microsoft の WebView2 SDK ライセンス（再配布可） |
 | Python 本体（実行ファイルに同梱） | 3.12 | PSF License |
 
-ビルドにだけ使うもの（配布物には含まれません）：PyInstaller 6.22.3（GPLv2 以降・ブートローダー例外付き。例外により生成した実行ファイルの配布条件は制限されません）、pytest 9.1.1（MIT）。
+ビルドにだけ使うもの（配布物には含まれません）：Inno Setup 6（インストーラー作成。Inno Setup License：商用利用を含め無償）、PyInstaller 6.22.3（GPLv2 以降・ブートローダー例外付き。例外により生成した実行ファイルの配布条件は制限されません）、pytest 9.1.1（MIT）。
 
 候補発見で使うデータ：OpenStreetMap © OpenStreetMap contributors（ODbL 1.0）。
 
