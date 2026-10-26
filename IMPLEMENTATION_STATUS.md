@@ -1,4 +1,4 @@
-# 実装状況（IMPLEMENTATION_STATUS）— 版 1.1.0（2026-10-26）
+# 実装状況（IMPLEMENTATION_STATUS）— 版 1.2.0（2026-10-26）
 
 仕様書「Samurai Auto 全機能実装版」の要件ごとの状況です。
 

@@ -1,6 +1,6 @@
 # FUTURE_EMAIL_PLAN — 営業メールの作成・送信・予約・返信管理を追加するための計画（設計の記録）
 
-> **2026-10-26 追記：この計画は版 1.1.0 で実装しました。** 現在の実装状況は [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md)、使い方は [README.md](README.md) の「4. 営業メール」、外部サービスの公式仕様の確認記録は [docs/EXTERNAL_SERVICES.md](docs/EXTERNAL_SERVICES.md) を参照してください。外部サービス（Gmail・Outlook・SMTP・Claude API）との実際の接続は、利用者のアカウントがないため引き続き**未検証**です。
+> **2026-10-26 追記：この計画は版 1.2.0 で実装しました。** 現在の実装状況は [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md)、使い方は [README.md](README.md) の「4. 営業メール」、外部サービスの公式仕様の確認記録は [docs/EXTERNAL_SERVICES.md](docs/EXTERNAL_SERVICES.md) を参照してください。外部サービス（Gmail・Outlook・SMTP・Claude API）との実際の接続は、利用者のアカウントがないため引き続き**未検証**です。
 > 以下は第1段階のときに書いた計画で、設計の経緯として残しています（実装では細部を変えた箇所があります）。
 
 この文書は第1段階のときの**将来の計画**です。第1段階ではメールの作成・送信・予約・返信管理を実装していませんでした。

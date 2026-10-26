@@ -1,11 +1,11 @@
 ﻿; Samurai Dealer Research のインストーラー（Inno Setup 6）
-; ビルド: ISCC.exe /DAppVersion=1.1.0 installer\SamuraiDealerResearch.iss
+; ビルド: ISCC.exe /DAppVersion=1.2.0 installer\SamuraiDealerResearch.iss
 ; - 管理者権限は不要（利用者ごとに %LOCALAPPDATA%\Programs へ導入）
 ; - データ（%LOCALAPPDATA%\SamuraiDealerResearch）は本体と別の場所にあり、更新・アンインストールで消さない
 ; - 起動中は更新を進めず、終了を案内する（アプリが作る名前付きミューテックスで判定）
 
 #ifndef AppVersion
-  #define AppVersion "1.1.0"
+  #define AppVersion "1.2.0"
 #endif
 #define AppName "Samurai Dealer Research"
 #define AppExe "SamuraiDealerResearch.exe"
