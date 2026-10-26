@@ -70,6 +70,19 @@ describe("初期設定とログイン", () => {
     expect((await attacker.post("/api/login", { username: "friend", key: created.data.key })).status).toBe(429);
   });
 
+  it("接続元を変えても、名前ごとの失敗回数でログインを止める", async () => {
+    const owner = await admin();
+    const created = await owner.post("/api/users", { username: "pin" });
+    const c = new Client(mf, origin);
+    for (let i = 0; i < 10; i++) {
+      const r = await c.post("/api/login", { username: "pin", key: "WRONG" }, { "cf-connecting-ip": `203.0.113.${i}` });
+      expect(r.status).toBe(401);
+    }
+    const r = await c.post("/api/login", { username: "pin", key: created.data.key }, { "cf-connecting-ip": "198.51.100.7" });
+    expect(r.status).toBe(429);
+    expect((await owner.get("/api/dealers")).status).toBe(200); // ログイン済みの端末は使える
+  });
+
   it("CSRF トークンと Origin を確認する", async () => {
     const c = await admin();
     const csrf = c.csrf;

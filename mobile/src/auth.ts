@@ -4,7 +4,9 @@
 //   iPhone のパスワード管理（iCloud キーチェーン）に保存して使う想定。
 // - 最初の管理者は、デプロイ時に設定した SETUP_TOKEN を知っている人だけが作れる。
 // - セッションは乱数トークン（ハッシュのみ保存）、HttpOnly・Secure・SameSite=Lax の Cookie、30 日。
-// - 更新操作は CSRF トークンと Origin を確認する。5 回連続で失敗すると 15 分間ログインを受け付けない。
+// - 更新操作は CSRF トークンと Origin を確認する。
+// - ログインの失敗制限：同じ名前・同じ接続元で 15 分に 5 回。加えて接続元に関係なく名前ごとに 15 分に 10 回・24 時間に 30 回
+//   （短いキーに変えた場合の総当たり対策。ロック中もログイン済みの端末はそのまま使える）。
 
 import { HttpError, nowIso, randomToken, sha256Hex, timingSafeEqual } from "./util";
 
@@ -13,6 +15,7 @@ export const SESSION_DAYS = 30;
 export const COOKIE = "__Host-sdr_session";
 const MAX_FAILURES = 5;
 const WINDOW_MS = 15 * 60 * 1000;
+const ACCOUNT_LIMITS: [number, number][] = [[10, WINDOW_MS], [30, 24 * 3600 * 1000]]; // [回数, 期間]
 
 export interface User {
   id: number;
@@ -77,13 +80,19 @@ export async function login(db: D1Database, username: string, key: string, ip: s
   const u = (username || "").trim();
   const failKey = `${u.toLowerCase()}|${ip}`;
   const since = Date.now() - WINDOW_MS;
+  const accountKey = `${u.toLowerCase()}|*`;
   const f = await db.prepare("SELECT COUNT(*) AS n FROM login_failures WHERE key=? AND at_ms > ?").bind(failKey, since).first<{ n: number }>();
   if (Number(f?.n || 0) >= MAX_FAILURES) throw new HttpError(429, "ログインの失敗が続いたため、15分ほど待ってから再度お試しください");
+  for (const [max, ms] of ACCOUNT_LIMITS) {
+    const a = await db.prepare("SELECT COUNT(*) AS n FROM login_failures WHERE key=? AND at_ms > ?").bind(accountKey, Date.now() - ms).first<{ n: number }>();
+    if (Number(a?.n || 0) >= max) throw new HttpError(429, "この利用者名へのログインの失敗が続いたため、一時的にログインを止めています。時間をおいて再度お試しください");
+  }
   const row = await db.prepare("SELECT * FROM users WHERE username=? AND disabled=0").bind(u).first<any>();
   const hash = await keyHash(u, key || "");
   if (!row || !timingSafeEqual(hash, row.key_hash)) {
     await db.batch([
       db.prepare("INSERT INTO login_failures(key, at_ms) VALUES(?, ?)").bind(failKey, Date.now()),
+      db.prepare("INSERT INTO login_failures(key, at_ms) VALUES(?, ?)").bind(accountKey, Date.now()),
       db.prepare("DELETE FROM login_failures WHERE at_ms < ?").bind(Date.now() - 24 * 3600 * 1000),
     ]);
     throw new HttpError(401, "利用者名またはログイン用キーが違います");
